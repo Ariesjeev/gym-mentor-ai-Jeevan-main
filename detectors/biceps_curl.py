@@ -24,7 +24,7 @@ class BicepsCurlDetector(BaseExercise):
 
     def reset(self) -> None:
         self.reps = 0
-        self.stage = None
+        self.stage = "start"
         self._shoulder_x_baseline = None
 
     def process(self, landmarks) -> dict:
@@ -48,13 +48,26 @@ class BicepsCurlDetector(BaseExercise):
 
         key_landmarks_visible = landmarks[shoulder_idx].visibility > self.MIN_VISIBILITY and landmarks[elbow_idx].visibility > self.MIN_VISIBILITY and landmarks[wrist_idx].visibility > self.MIN_VISIBILITY
 
-        if key_landmarks_visible:
-            if elbow_angle < self.UP_THRESHOLD:
-                self.stage = "up"
+        if not key_landmarks_visible:
+            self.stage = "start"
+            return {
+                "reps": self.reps,
+                "elbow_angle": int(elbow_angle),
+                "shoulder_status": "NO_POSE",
+                "swing_status": "NO_POSE",
+                "form_status": "NO_POSE",
+                "state": self.stage,
+            }
 
-            if elbow_angle > self.DOWN_THRESHOLD and self.stage == "up":
-                self.stage = "down"
-                self.reps += 1
+        if elbow_angle <= self.UP_THRESHOLD and self.stage in ("start", "down", "rep_complete"):
+            self.stage = "up"
+        elif elbow_angle >= self.DOWN_THRESHOLD and self.stage == "up":
+            self.stage = "down"
+            self.reps += 1
+            self.stage = "rep_complete"
+
+        if self.stage == "rep_complete" and elbow_angle <= self.DOWN_THRESHOLD:
+            self.stage = "up"
 
         shoulder_x = landmarks[shoulder_idx].x
         elbow_x = landmarks[elbow_idx].x
@@ -81,7 +94,6 @@ class BicepsCurlDetector(BaseExercise):
         else:
             swing_status = "SWINGING"
 
-        # ── Bilateral Symmetry: always compute both sides ─────────────────────────
         left_elbow_angle = 0
         right_elbow_angle = 0
         both_visible = (
@@ -104,6 +116,13 @@ class BicepsCurlDetector(BaseExercise):
                 self.get_point(landmarks, self.RIGHT_WRIST),
             ))
 
+        if shoulder_status == "ELBOW DRIFTING" or swing_status == "SWINGING":
+            form_status = "MAJOR"
+        elif shoulder_status != "STABLE" or torso_angle_from_vertical > 8:
+            form_status = "MINOR"
+        else:
+            form_status = "GOOD"
+
         return {
             "reps": self.reps,
             "elbow_angle": int(elbow_angle),
@@ -111,6 +130,8 @@ class BicepsCurlDetector(BaseExercise):
             "right_elbow_angle": right_elbow_angle,
             "shoulder_status": shoulder_status,
             "swing_status": swing_status,
+            "form_status": form_status,
+            "state": self.stage,
         }
 
     def _safe_angle(self, dx, dy):

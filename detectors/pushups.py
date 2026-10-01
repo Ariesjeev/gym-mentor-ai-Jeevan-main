@@ -23,7 +23,7 @@ class PushUpDetector(BaseExercise):
 
     def reset(self) -> None:
         self.reps = 0
-        self.stage = None
+        self.stage = "start"
 
     def process(self, landmarks) -> dict:
         left_vis = landmarks[self.LEFT_ELBOW].visibility
@@ -62,14 +62,27 @@ class PushUpDetector(BaseExercise):
         hip_deviation = hip_y - expected_hip_y
 
         key_landmarks_visible = landmarks[shoulder_idx].visibility > self.MIN_VISIBILITY and landmarks[elbow_idx].visibility > self.MIN_VISIBILITY and landmarks[wrist_idx].visibility > self.MIN_VISIBILITY and landmarks[hip_idx].visibility > self.MIN_VISIBILITY
-        
-        if key_landmarks_visible:
-            if elbow_angle < self.DOWN_THRESHOLD:
-                self.stage = "down"
 
-            if elbow_angle > self.UP_THRESHOLD and self.stage == "down":
-                self.stage = "up"
-                self.reps += 1
+        if not key_landmarks_visible:
+            self.stage = "start"
+            return {
+                "reps": self.reps,
+                "elbow_angle": int(elbow_angle),
+                "body_alignment": "NO_POSE",
+                "hip_status": "NO_POSE",
+                "form_status": "NO_POSE",
+                "state": self.stage,
+            }
+
+        if elbow_angle <= self.DOWN_THRESHOLD and self.stage in ("start", "up", "rep_complete"):
+            self.stage = "down"
+        elif elbow_angle >= self.UP_THRESHOLD and self.stage == "down":
+            self.stage = "up"
+            self.reps += 1
+            self.stage = "rep_complete"
+
+        if self.stage == "rep_complete" and elbow_angle <= self.UP_THRESHOLD:
+            self.stage = "down"
 
         if body_angle > 160:
             body_alignment = "Straight"
@@ -85,10 +98,19 @@ class PushUpDetector(BaseExercise):
         else:
             hip_status = "PIKED UP"
 
+        if body_alignment == "Poor Form" or hip_status in ("SAGGING", "PIKED UP"):
+            form_status = "MAJOR"
+        elif body_alignment == "Slight Bend" or hip_status != "LEVEL":
+            form_status = "MINOR"
+        else:
+            form_status = "GOOD"
+
         return {
             "reps": self.reps,
             "elbow_angle": int(elbow_angle),
             "body_alignment": body_alignment,
             "hip_status": hip_status,
+            "form_status": form_status,
+            "state": self.stage,
         }
     

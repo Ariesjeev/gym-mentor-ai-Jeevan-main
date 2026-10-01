@@ -68,6 +68,14 @@ def sync_metrics_update(context):
     if getattr(processor, "pending_browser_speech", None):
         st.session_state.browser_speech = processor.pending_browser_speech
         processor.pending_browser_speech = None
+
+    voice_pipeline = st.session_state.get("voice_pipeline")
+    if voice_pipeline and getattr(voice_pipeline, "pending_browser_speech", None):
+        st.session_state.browser_speech = voice_pipeline.pending_browser_speech
+        voice_pipeline.pending_browser_speech = None
+
+    if voice_pipeline and getattr(voice_pipeline, "current_coach_text", ""):
+        st.session_state.coach_feedback = voice_pipeline.current_coach_text
     
     # Exercise specific metrics pulling
     st.session_state.knee_angle = getattr(processor, "knee_angle", 0)

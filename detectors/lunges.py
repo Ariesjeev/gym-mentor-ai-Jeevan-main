@@ -22,7 +22,7 @@ class LungesDetector(BaseExercise):
 
     def reset(self) -> None:
         self.reps = 0
-        self.stage = None
+        self.stage = "start"
 
     def process(self, landmarks) -> dict:
         left_knee_angle = self.calculate_angle(
@@ -52,15 +52,29 @@ class LungesDetector(BaseExercise):
 
         key_landmarks_visible = landmarks[front_hip_idx].visibility > self.MIN_VISIBILITY and landmarks[front_knee_idx].visibility > self.MIN_VISIBILITY and landmarks[front_ankle_idx].visibility > self.MIN_VISIBILITY
 
-        if key_landmarks_visible:
-            if front_knee_angle < self.DOWN_THRESHOLD:
-                self.stage = "down"
+        if not key_landmarks_visible:
+            self.stage = "start"
+            return {
+                "reps": self.reps,
+                "front_knee_angle": int(front_knee_angle),
+                "left_knee_angle": int(left_knee_angle),
+                "right_knee_angle": int(right_knee_angle),
+                "torso_angle": 0,
+                "balance_status": "NO_POSE",
+                "form_status": "NO_POSE",
+                "state": self.stage,
+            }
 
-            if front_knee_angle > self.UP_THRESHOLD and self.stage == "down":
-                self.stage = "up"
-                self.reps += 1
+        if front_knee_angle <= self.DOWN_THRESHOLD and self.stage in ("start", "up", "rep_complete"):
+            self.stage = "down"
+        elif front_knee_angle >= self.UP_THRESHOLD and self.stage == "down":
+            self.stage = "up"
+            self.reps += 1
+            self.stage = "rep_complete"
 
-        # Torso lean angle: deviation from vertical (0° = upright)
+        if self.stage == "rep_complete" and front_knee_angle <= self.UP_THRESHOLD:
+            self.stage = "down"
+
         shoulder_pt = self.get_point(landmarks, shoulder_idx_for_torso)
         hip_pt = self.get_point(landmarks, front_hip_idx)
         dx = shoulder_pt[0] - hip_pt[0]
@@ -76,16 +90,24 @@ class LungesDetector(BaseExercise):
         else:
             balance_status = "OFF BALANCE"
 
-        # Knee overhang check: angle too acute means knee is pushing past the toes
         if front_knee_angle < 75:
             balance_status = "Knee Past Toes"
+
+        if balance_status in ("Knee Past Toes", "OFF BALANCE") or torso_angle > 25:
+            form_status = "MAJOR"
+        elif torso_angle > 12 or balance_status != "BALANCED":
+            form_status = "MINOR"
+        else:
+            form_status = "GOOD"
 
         return {
             "reps": self.reps,
             "front_knee_angle": int(front_knee_angle),
-            "left_knee_angle":  int(left_knee_angle),
+            "left_knee_angle": int(left_knee_angle),
             "right_knee_angle": int(right_knee_angle),
             "torso_angle": torso_angle,
             "balance_status": balance_status,
+            "form_status": form_status,
+            "state": self.stage,
         }
     

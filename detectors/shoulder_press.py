@@ -22,7 +22,7 @@ class ShoulderPressDetector(BaseExercise):
 
     def reset(self) -> None:
         self.reps = 0
-        self.stage = None
+        self.stage = "start"
 
     def process(self, landmarks) -> dict:
         left_vis = landmarks[self.LEFT_ELBOW].visibility
@@ -49,13 +49,26 @@ class ShoulderPressDetector(BaseExercise):
 
         key_landmarks_visible = landmarks[shoulder_idx].visibility > self.MIN_VISIBILITY and landmarks[elbow_idx].visibility > self.MIN_VISIBILITY and landmarks[wrist_idx].visibility > self.MIN_VISIBILITY
 
-        if key_landmarks_visible:
-            if elbow_angle > self.UP_THRESHOLD:
-                self.stage = "up"
+        if not key_landmarks_visible:
+            self.stage = "start"
+            return {
+                "reps": self.reps,
+                "elbow_angle": int(elbow_angle),
+                "extension_status": "NO_POSE",
+                "back_arch_status": "NO_POSE",
+                "form_status": "NO_POSE",
+                "state": self.stage,
+            }
 
-            if elbow_angle < self.DOWN_THRESHOLD and self.stage == "up":
-                self.stage = "down"
-                self.reps += 1
+        if elbow_angle >= self.UP_THRESHOLD and self.stage in ("start", "down", "rep_complete"):
+            self.stage = "up"
+        elif elbow_angle <= self.DOWN_THRESHOLD and self.stage == "up":
+            self.stage = "down"
+            self.reps += 1
+            self.stage = "rep_complete"
+
+        if self.stage == "rep_complete" and elbow_angle >= self.DOWN_THRESHOLD:
+            self.stage = "up"
 
         if elbow_angle >= self.UP_THRESHOLD:
             extension_status = "FULL EXTENSION"
@@ -79,10 +92,19 @@ class ShoulderPressDetector(BaseExercise):
         else:
             back_arch_status = "Excessive Arch"
 
+        if back_arch_status == "Excessive Arch":
+            form_status = "MAJOR"
+        elif extension_status in ("START POSITION", "PRESSING"):
+            form_status = "MINOR"
+        else:
+            form_status = "GOOD"
+
         return {
             "reps": self.reps,
             "elbow_angle": int(elbow_angle),
             "extension_status": extension_status,
             "back_arch_status": back_arch_status,
+            "form_status": form_status,
+            "state": self.stage,
         }
     

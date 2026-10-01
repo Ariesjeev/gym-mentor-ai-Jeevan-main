@@ -21,7 +21,7 @@ class SquatDetector(BaseExercise):
 
     def reset(self):
         self.reps = 0
-        self.stage = None
+        self.stage = "start"
 
     def process(self, landmarks):
         left_knee_angle = self.calculate_angle(
@@ -46,38 +46,59 @@ class SquatDetector(BaseExercise):
             knee_angle = right_knee_angle
             hip_idx, knee_idx, ankle_idx, shoulder_idx = self.RIGHT_HIP, self.RIGHT_KNEE, self.RIGHT_ANKLE, self.RIGHT_SHOULDER
 
-        # Also compute forward lean angle (torso vs vertical) using normalized coords.
-        # This measures how far the torso deviates from vertical: 0° = perfectly upright.
         shoulder_pt = self.get_point(landmarks, shoulder_idx)
         hip_pt = self.get_point(landmarks, hip_idx)
         dx = shoulder_pt[0] - hip_pt[0]
         dy = shoulder_pt[1] - hip_pt[1]
-        # dy is negative when shoulder is above hip in normalized image coords (y increases downward)
         forward_lean_angle = int(math.degrees(math.atan2(abs(dx), abs(dy)))) if dy != 0 else 0
 
         key_landmark_visible = landmarks[hip_idx].visibility >= self.MIN_VISIBILITY and landmarks[knee_idx].visibility >= self.MIN_VISIBILITY and landmarks[ankle_idx].visibility >= self.MIN_VISIBILITY
 
-        if key_landmark_visible:
-            if knee_angle < self.DOWN_THRESHOLD:
-                self.stage = "down"
+        if not key_landmark_visible:
+            self.stage = "start"
+            return {
+                "reps": self.reps,
+                "knee_angle": int(knee_angle),
+                "back_angle": forward_lean_angle,
+                "depth_status": "NO_POSE",
+                "form_status": "NO_POSE",
+                "state": self.stage,
+            }
 
-            if knee_angle >= self.UP_THRESHOLD and self.stage == "down":
-                self.stage = "up"
-                self.reps += 1
+        if knee_angle <= self.DOWN_THRESHOLD and self.stage in ("start", "up", "rep_complete"):
+            self.stage = "down"
+        elif knee_angle >= self.UP_THRESHOLD and self.stage == "down":
+            self.stage = "up"
+            self.reps += 1
+            self.stage = "rep_complete"
 
         if self.stage == "down":
             depth_status = "GOOD DEPTH" if knee_angle <= self.DOWN_THRESHOLD else "TOO HIGH"
         elif self.stage == "up":
             depth_status = "STANDING"
+        elif self.stage == "rep_complete":
+            depth_status = "REP_COMPLETE"
         elif knee_angle < 135:
             depth_status = "Shallow Squat"
         else:
             depth_status = "STANDING"
 
+        if self.stage == "rep_complete" and knee_angle <= self.DOWN_THRESHOLD:
+            self.stage = "down"
+
+        if forward_lean_angle > 35 or knee_angle > 150:
+            form_status = "MAJOR"
+        elif depth_status in ("Shallow Squat", "TOO HIGH") or forward_lean_angle > 20:
+            form_status = "MINOR"
+        else:
+            form_status = "GOOD"
+
         return {
             "reps": self.reps,
             "knee_angle": int(knee_angle),
             "back_angle": forward_lean_angle,
-            "depth_status": depth_status
+            "depth_status": depth_status,
+            "form_status": form_status,
+            "state": self.stage,
         }
     
