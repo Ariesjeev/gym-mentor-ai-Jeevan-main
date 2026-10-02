@@ -1,7 +1,5 @@
 import cv2
 import mediapipe as mp
-import threading
-import time
 _mp_import_error = ""
 try:
     import mediapipe.python.solutions as mp_solutions
@@ -107,10 +105,6 @@ class VideoProcessorClass(VideoProcessorBase):
         self.last_breathing_cue_set = -1       # which set index breathing was last cued
         self.frame_counter = 0
         self.last_results = None
-        self.state_lock = threading.RLock()
-        self.last_form_feedback_key = None
-        self.last_form_feedback_at = 0.0
-        self.last_positive_feedback_at = 0.0
 
     def _init_detector(self, exercise_type):
         """Instantiate the correct detector for the given exercise type."""
@@ -155,107 +149,89 @@ class VideoProcessorClass(VideoProcessorBase):
             self.right_knee_angle = 0
 
     def increment_rep(self):
-        with self.state_lock:
-            self.reps += 1
-            self.current_set_reps += 1
-            logging.info(f"[REP] {self.exercise_type} rep completed => total_reps={self.reps}, current_set_reps={self.current_set_reps}")
+        self.reps += 1
+        self.current_set_reps += 1
 
-            from services.coaching.form_analyzer import calculate_form_score
-            cur_metrics = {
-                "knee_angle": self.knee_angle, "back_angle": self.back_angle,
-                "depth_status": self.depth_status, "elbow_angle": self.elbow_angle,
-                "body_alignment": self.body_alignment, "hip_status": self.hip_status,
-                "shoulder_status": self.shoulder_status, "swing_status": self.swing_status,
-                "extension_status": self.extension_status, "back_arch_status": self.back_arch_status,
-                "front_knee_angle": self.front_knee_angle, "torso_angle": self.torso_angle,
-                "balance_status": self.balance_status,
-            }
-            rep_score, _ = calculate_form_score(self.exercise_type, cur_metrics)
-            self.last_rep_form_score = rep_score
+        logging.info(f"[VideoProcessor] Rep incremented. reps={self.reps}, current_set_reps={self.current_set_reps}")
 
-            if rep_score < 50:
-                self.consecutive_bad_reps += 1
-            else:
-                self.consecutive_bad_reps = 0
+        # ── Injury Warning: track consecutive bad-form reps ───────────────
+        from services.coaching.form_analyzer import calculate_form_score
+        import time as _time
+        cur_metrics = {
+            "knee_angle": self.knee_angle, "back_angle": self.back_angle,
+            "depth_status": self.depth_status, "elbow_angle": self.elbow_angle,
+            "body_alignment": self.body_alignment, "hip_status": self.hip_status,
+            "shoulder_status": self.shoulder_status, "swing_status": self.swing_status,
+            "extension_status": self.extension_status, "back_arch_status": self.back_arch_status,
+            "front_knee_angle": self.front_knee_angle, "torso_angle": self.torso_angle,
+            "balance_status": self.balance_status,
+        }
+        rep_score, _ = calculate_form_score(self.exercise_type, cur_metrics)
+        self.last_rep_form_score = rep_score
 
-            if self.consecutive_bad_reps >= 3 and self.voice_event_bus and self.voice_enabled:
-                now_t = time.time()
-                if now_t - self.last_injury_warning_time >= 10.0:
-                    logging.warning(f"[VideoProcessor] INJURY WARNING: {self.consecutive_bad_reps} consecutive bad reps (score={rep_score})")
-                    self.voice_event_bus.publish("injury_warning", {"consecutive_bad_reps": self.consecutive_bad_reps, "form_score": rep_score})
-                    self.last_injury_warning_time = now_t
+        if rep_score < 50:
+            self.consecutive_bad_reps += 1
+        else:
+            self.consecutive_bad_reps = 0
 
-            if self.voice_event_bus and self.voice_enabled:
-                self.voice_event_bus.publish("rep_completed", {"reps": self.reps})
-            else:
-                logging.warning(f"[VideoProcessor] Event bus or voice enabled check failed: bus={self.voice_event_bus is not None}, enabled={self.voice_enabled}")
+        # Trigger injury warning if 3+ consecutive bad reps and 10s cooldown passed
+        if self.consecutive_bad_reps >= 3 and self.voice_event_bus and self.voice_enabled:
+            now_t = _time.time()
+            if now_t - self.last_injury_warning_time >= 10.0:
+                logging.warning(f"[VideoProcessor] INJURY WARNING: {self.consecutive_bad_reps} consecutive bad reps (score={rep_score})")
+                self.voice_event_bus.publish("injury_warning", {"consecutive_bad_reps": self.consecutive_bad_reps, "form_score": rep_score})
+                self.last_injury_warning_time = now_t
 
-            if self.reps_per_set > 0 and self.current_set_reps >= self.reps_per_set:
-                self.sets_completed += 1
-                self.current_set_reps = 0
-                logging.info(f"[SET] {self.exercise_type} set completed => sets_completed={self.sets_completed}, current_set_reps={self.current_set_reps}, reps={self.reps}")
-                if self.voice_event_bus and self.voice_enabled:
-                    self.voice_event_bus.publish("breathing_cue", {"exercise": self.exercise_type, "set_num": self.sets_completed})
-                    self.voice_event_bus.publish("set_completed", {"sets_completed": self.sets_completed, "exercise": self.exercise_type})
-                    self.last_breathing_cue_set = self.sets_completed
-
-    def _emit_feedback_event(self, feedback_text: str, positive=False):
-        if not feedback_text:
-            return
-
-        now = time.time()
-        key = feedback_text.lower()
-        if positive:
-            if now - self.last_positive_feedback_at < 4.0:
-                return
-            self.last_positive_feedback_at = now
-            if self.voice_event_bus and self.voice_enabled:
-                self.voice_event_bus.publish("positive_feedback", {"feedback": feedback_text})
-            return
-
-        if self.last_form_feedback_key == key and now - self.last_form_feedback_at < 2.0:
-            return
-
-        self.last_form_feedback_key = key
-        self.last_form_feedback_at = now
-        logging.info(f"[FEEDBACK] event='{feedback_text}'")
+        # Publish rep completed event to the VoiceEventBus
         if self.voice_event_bus and self.voice_enabled:
-            self.voice_event_bus.publish("posture_warning", {"feedback": feedback_text, "key": key})
+            logging.info(f"[VideoProcessor] Publishing rep_completed event to event bus: reps={self.reps}")
+            self.voice_event_bus.publish("rep_completed", {"reps": self.reps})
+        else:
+            logging.warning(f"[VideoProcessor] Event bus or voice enabled check failed: bus={self.voice_event_bus is not None}, enabled={self.voice_enabled}")
+
+        if self.reps_per_set > 0 and self.current_set_reps >= self.reps_per_set:
+            self.sets_completed += 1
+            self.current_set_reps = 0
+            # ── Breathing Cue: publish once per new set ───────────────────
+            if self.voice_event_bus and self.voice_enabled:
+                self.voice_event_bus.publish("breathing_cue", {"exercise": self.exercise_type, "set_num": self.sets_completed})
+                self.last_breathing_cue_set = self.sets_completed
 
 
     def _sync_from_detector(self, result: dict):
         """Pull rep count and metrics from the detector result dict into self."""
-        with self.state_lock:
-            new_reps = result.get("reps", 0)
-            if new_reps > self.reps:
-                diff = new_reps - self.reps
-                for _ in range(diff):
-                    self.increment_rep()
+        # Sync rep counts — increment_rep handles set logic, so just mirror reps
+        new_reps = result.get("reps", 0)
+        if new_reps > self.reps:
+            # Detector registered new reps since last frame
+            diff = new_reps - self.reps
+            for _ in range(diff):
+                self.increment_rep()
 
-            self.knee_angle = result.get("knee_angle", self.knee_angle)
-            self.back_angle = result.get("back_angle", self.back_angle)
-            self.depth_status = result.get("depth_status", self.depth_status)
+        # Squats
+        self.knee_angle = result.get("knee_angle", self.knee_angle)
+        self.back_angle = result.get("back_angle", self.back_angle)
+        self.depth_status = result.get("depth_status", self.depth_status)
 
-            self.elbow_angle = result.get("elbow_angle", self.elbow_angle)
-            self.body_alignment = result.get("body_alignment", self.body_alignment)
-            self.hip_status = result.get("hip_status", self.hip_status)
-            self.shoulder_status = result.get("shoulder_status", self.shoulder_status)
-            self.swing_status = result.get("swing_status", self.swing_status)
-            self.extension_status = result.get("extension_status", self.extension_status)
-            self.back_arch_status = result.get("back_arch_status", self.back_arch_status)
+        # Push-ups / Biceps / Shoulder Press
+        self.elbow_angle = result.get("elbow_angle", self.elbow_angle)
+        self.body_alignment = result.get("body_alignment", self.body_alignment)
+        self.hip_status = result.get("hip_status", self.hip_status)
+        self.shoulder_status = result.get("shoulder_status", self.shoulder_status)
+        self.swing_status = result.get("swing_status", self.swing_status)
+        self.extension_status = result.get("extension_status", self.extension_status)
+        self.back_arch_status = result.get("back_arch_status", self.back_arch_status)
 
-            self.front_knee_angle = result.get("front_knee_angle", self.front_knee_angle)
-            self.torso_angle = result.get("torso_angle", self.torso_angle)
-            self.balance_status = result.get("balance_status", self.balance_status)
+        # Lunges
+        self.front_knee_angle = result.get("front_knee_angle", self.front_knee_angle)
+        self.torso_angle = result.get("torso_angle", self.torso_angle)
+        self.balance_status = result.get("balance_status", self.balance_status)
 
-            self.left_elbow_angle  = result.get("left_elbow_angle",  self.left_elbow_angle)
-            self.right_elbow_angle = result.get("right_elbow_angle", self.right_elbow_angle)
-            self.left_knee_angle   = result.get("left_knee_angle",   self.left_knee_angle)
-            self.right_knee_angle  = result.get("right_knee_angle",  self.right_knee_angle)
-
-            self.stage = result.get("state", self.stage)
-            current_form_status = result.get("form_status", "GOOD")
-            logging.info(f"[FORM] exercise={self.exercise_type} form_status={current_form_status} depth={self.depth_status} knee={self.knee_angle} elbow={self.elbow_angle} state={self.stage}")
+        # Bilateral symmetry
+        self.left_elbow_angle  = result.get("left_elbow_angle",  self.left_elbow_angle)
+        self.right_elbow_angle = result.get("right_elbow_angle", self.right_elbow_angle)
+        self.left_knee_angle   = result.get("left_knee_angle",   self.left_knee_angle)
+        self.right_knee_angle  = result.get("right_knee_angle",  self.right_knee_angle)
 
     def _get_form_feedback(self, result: dict) -> Optional[str]:
         """Derive human-readable form feedback from detector output."""
@@ -331,17 +307,17 @@ class VideoProcessorClass(VideoProcessorBase):
                 if self._detector and should_process_ai:
                     result = self._detector.process(landmarks)
                     self._sync_from_detector(result)
-                    form_status = result.get("form_status", "GOOD")
                     self.form_feedback = self._get_form_feedback(result)
 
-                    if form_status == "NO_POSE":
-                        self.form_feedback = "No person detected."
-                    elif form_status == "NOT_STARTED":
-                        self.form_feedback = "Start the movement."
-                    elif self.form_feedback:
-                        self._emit_feedback_event(self.form_feedback)
-                    elif form_status == "GOOD":
-                        self._emit_feedback_event("Excellent form. Keep going.", positive=True)
+                    # Real-time posture feedback triggering inside processor frame loop
+                    if self.form_feedback:
+                        import time
+                        if self.voice_enabled and self.voice_event_bus:
+                            now = time.time()
+                            if now - self.last_form_feedback_time > 2.5:
+                                logging.info(f"[VideoProcessor] Publishing posture_warning event: feedback='{self.form_feedback}'")
+                                self.voice_event_bus.publish("posture_warning", {"feedback": self.form_feedback})
+                                self.last_form_feedback_time = now
 
                     # Render exercise-specific angle overlays
                     left_vis = sum(landmarks[idx].visibility for idx in [11, 13, 15, 23, 25, 27]) / 6.0
