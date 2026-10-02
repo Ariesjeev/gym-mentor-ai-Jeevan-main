@@ -11,7 +11,7 @@ from services.ui.style_loader import load_css, inject_local_font, inject_webrtc_
 from services.persistence.exercise_repository import init_db, update_user_profile, save_schedule, get_schedule
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 from services.vision.exercise_video_processor import VideoProcessorClass, mp_solutions, _mp_import_error
-from services.tracking.metrics import sync_metrics_update
+from services.tracking.metrics import sync_metrics_update, sync_voice_events
 from services.persistence.exercise_repository import get_users_exercises
 from services.scheduling.workout_scheduler import check_today_schedule, format_schedule_summary, calculate_bmi, bmi_category, DAY_NAMES
 
@@ -32,6 +32,58 @@ def clean_html(html_content: str) -> str:
     if not html_content:
         return ""
     return "\n".join(line.strip() for line in html_content.splitlines())
+
+
+def render_browser_speech_player():
+    if not st.session_state.get("voice_enabled", True):
+        return
+    if st.session_state.get("voice_engine") != "Web Speech API":
+        return
+
+    speech_queue = st.session_state.get("browser_speech_queue", [])
+    if not speech_queue:
+        return
+
+    import json
+    queue_json = json.dumps(speech_queue)
+    st.markdown(
+        clean_html(f"""
+        <div id="speech-queue-trigger" data-queue='{queue_json}' style="display:none;"></div>
+        <script>
+            (function() {{
+                const trigger = document.getElementById("speech-queue-trigger");
+                if (!trigger) return;
+                let items = [];
+                try {{ items = JSON.parse(trigger.getAttribute("data-queue") || "[]"); }}
+                catch (error) {{ console.error("[WebSpeech] Invalid speech queue", error); return; }}
+                window.spokenSpeechIds = window.spokenSpeechIds || new Set();
+                const setFeedback = (value) => {{
+                    let input = window.parent.document.querySelector('input[aria-label="Speech Feedback Link"]');
+                    if (!input) return;
+                    const setter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, "value").set;
+                    setter.call(input, value);
+                    input.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                    input.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                }};
+                for (const item of items) {{
+                    if (window.spokenSpeechIds.has(item.id)) continue;
+                    window.spokenSpeechIds.add(item.id);
+                    if (!window.speechSynthesis) {{ setFeedback("failed:" + item.id); continue; }}
+                    if (item.priority === "high") window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(item.text);
+                    utterance.volume = item.volume;
+                    const voices = window.speechSynthesis.getVoices();
+                    const wanted = item.gender === "female" ? ["female", "zira", "samantha", "hazel"] : ["male", "david"];
+                    utterance.voice = voices.find(v => wanted.some(name => v.name.toLowerCase().includes(name))) || null;
+                    utterance.onend = () => setFeedback("spoken:" + item.id);
+                    utterance.onerror = (event) => setFeedback((event.error === "interrupted" || event.error === "canceled" ? "spoken:" : "failed:") + item.id);
+                    window.speechSynthesis.speak(utterance);
+                }}
+            }})();
+        </script>
+        """).strip(),
+        unsafe_allow_html=True,
+    )
 
 
 def main():
@@ -127,6 +179,14 @@ def main():
     if st.session_state.get("voice_pipeline") and not st.session_state.get("greeting_played", False):
         st.session_state.voice_pipeline.speak("Hello! Welcome to AI Gym Trainer.")
         st.session_state.greeting_played = True
+
+    if hasattr(st, "fragment"):
+        @st.fragment(run_every=0.5)
+        def live_voice_updates():
+            sync_voice_events()
+            render_browser_speech_player()
+
+        live_voice_updates()
 
     workout_started = st.session_state.get("workout_started", False)
     
@@ -1042,7 +1102,7 @@ def main():
                     unsafe_allow_html=True
                 )
 
-                # Progress metrics displayed in structured cards
+                # Progress metrics
                 pcol1, pcol2 = st.columns(2)
                 with pcol1:
                     st.metric("Total Reps Done", f"{total_reps}")
@@ -1050,7 +1110,6 @@ def main():
                     st.metric("Set Reps Completed", f"{current_set_reps} / {reps_per_set}")
                 st.metric("Sets Completed", f"{sets_completed} / {target_sets}")
 
-                # ── 🔥 Live Calorie Counter ────────────────────────────
                 kcal = st.session_state.get("calories_burned", 0.0)
                 weight_kg = st.session_state.get("body_weight_kg", 70.0)
                 st.markdown(
@@ -1066,7 +1125,7 @@ def main():
                         align-items: center;
                     ">
                         <div>
-                            <div style="font-size: 0.7rem; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;">🔥 Calories Burned</div>
+                            <div style="font-size: 0.7rem; color: #94A3B8; font-weight: 700; text-transform: uppercase;">Calories Burned</div>
                             <div style="font-size: 0.72rem; color: #64748B; margin-top: 1px;">{weight_kg} kg · {exercise}</div>
                         </div>
                         <div style="font-size: 1.9rem; font-weight: 900; color: #F87171;">
@@ -1077,75 +1136,48 @@ def main():
                     unsafe_allow_html=True
                 )
 
-                # AI Form Score Card
                 from services.coaching.feedback_manager import get_recommendation_by_weakest_area
                 form_score = st.session_state.get("form_score", 100)
                 strongest = st.session_state.get("strongest_area", "N/A")
                 weakest = st.session_state.get("weakest_area", "N/A")
 
-                # --- Speak recommendation when weakest area changes or every 20s ---
                 if st.session_state.get("workout_started", False) and weakest not in ("N/A", "General Posture"):
                     last_spoken_weakest = st.session_state.get("last_spoken_weakest_area", "")
                     last_weakest_voice_time = st.session_state.get("last_weakest_voice_time", 0.0)
                     now_w = time.time()
-                    area_changed = (weakest != last_spoken_weakest)
-                    cooldown_passed = (now_w - last_weakest_voice_time >= 20.0)
-
-                    if (area_changed or cooldown_passed) and st.session_state.get("voice_pipeline"):
+                    if (weakest != last_spoken_weakest or now_w - last_weakest_voice_time >= 20.0) and st.session_state.get("voice_pipeline"):
                         rec_text = get_recommendation_by_weakest_area(weakest)
-                        # Shorten to a voice-friendly cue
-                        voice_rec = f"Focus on {weakest}: {rec_text}"
-                        result = st.session_state.voice_pipeline.speak(voice_rec, priority="normal")
-                        if result:
-                            st.session_state.audio_to_play, st.session_state.coach_feedback, st.session_state.audio_duration = result
-                            st.session_state.audio_play_start = time.time()
+                        st.session_state.voice_pipeline.speak(f"Focus on {weakest}: {rec_text}", priority="normal")
                         st.session_state.last_spoken_weakest_area = weakest
                         st.session_state.last_weakest_voice_time = now_w
 
                 if form_score >= 90:
-                    color = "#10B981"  # Green
-                    label = "Excellent"
+                    color, label = "#10B981", "Excellent"
                 elif form_score >= 75:
-                    color = "#3B82F6"  # Blue/Good
-                    label = "Good"
+                    color, label = "#3B82F6", "Good"
                 elif form_score >= 60:
-                    color = "#F59E0B"  # Yellow/Orange
-                    label = "Average"
+                    color, label = "#F59E0B", "Average"
                 else:
-                    color = "#EF4444"  # Red
-                    label = "Needs Improvement"
-                
+                    color, label = "#EF4444", "Needs Improvement"
+
                 st.markdown(
                     clean_html(f"""
-                    <div style="
-                        background: rgba(15, 23, 42, 0.4);
-                        border: 1px solid {color}40;
-                        border-left: 5px solid {color};
-                        border-radius: 12px;
-                        padding: 16px;
-                        margin-top: 15px;
-                        margin-bottom: 15px;
-                        backdrop-filter: blur(8px);
-                    ">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 0.9rem; color: #94A3B8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">AI Form Score</span>
-                            <span style="background: {color}20; color: {color}; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; text-transform: uppercase;">{label}</span>
+                    <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid {color}40; border-left: 5px solid {color}; border-radius: 12px; padding: 16px; margin: 15px 0;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:0.9rem;color:#94A3B8;font-weight:600;text-transform:uppercase;">AI Form Score</span>
+                            <span style="background:{color}20;color:{color};font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:9999px;text-transform:uppercase;">{label}</span>
                         </div>
-                        <div style="font-size: 2.2rem; font-weight: 800; color: #FFFFFF; margin-top: 4px; margin-bottom: 4px;">
-                            {form_score} <span style="font-size: 1.1rem; color: #64748B; font-weight: 500;">/ 100</span>
-                        </div>
-                        <div style="display: flex; gap: 16px; font-size: 0.85rem; margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px;">
-                            <div><strong style="color: #94A3B8;">Strongest:</strong> <span style="color: #10B981; font-weight: 600;">{strongest}</span></div>
-                            <div><strong style="color: #94A3B8;">Weakest:</strong> <span style="color: #EF4444; font-weight: 600;">{weakest}</span></div>
+                        <div style="font-size:2.2rem;font-weight:800;color:#FFFFFF;margin:4px 0;">{form_score} <span style="font-size:1.1rem;color:#64748B;font-weight:500;">/ 100</span></div>
+                        <div style="display:flex;gap:16px;font-size:0.85rem;margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:8px;">
+                            <div><strong style="color:#94A3B8;">Strongest:</strong> <span style="color:#10B981;font-weight:600;">{strongest}</span></div>
+                            <div><strong style="color:#94A3B8;">Weakest:</strong> <span style="color:#EF4444;font-weight:600;">{weakest}</span></div>
                         </div>
                     </div>
                     """).strip(),
                     unsafe_allow_html=True
                 )
 
-                # Live Recommendation Card — shown when weakest area is known
                 if weakest not in ("N/A", "General Posture"):
-                    from services.coaching.feedback_manager import get_recommendation_by_weakest_area
                     live_rec = get_recommendation_by_weakest_area(weakest)
                     st.markdown(
                         clean_html(f"""

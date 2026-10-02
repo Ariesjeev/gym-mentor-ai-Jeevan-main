@@ -107,7 +107,7 @@ class VideoProcessorClass(VideoProcessorBase):
         self.last_breathing_cue_set = -1       # which set index breathing was last cued
         self.frame_counter = 0
         self.last_results = None
-        self.state_lock = threading.Lock()
+        self.state_lock = threading.RLock()
         self.last_form_feedback_key = None
         self.last_form_feedback_at = 0.0
         self.last_positive_feedback_at = 0.0

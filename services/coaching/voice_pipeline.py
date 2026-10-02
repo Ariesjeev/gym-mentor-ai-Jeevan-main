@@ -81,7 +81,7 @@ class VoicePipeline:
         self.last_warning_times = {}  # Tracks last spoken time for each posture warning message
         self.speak_called_count = 0
         self.pending_audio = None
-        self.pending_browser_speech = None
+        self.pending_browser_speech = queue.Queue()
         self.latest_feedback = ""
         self.current_coach_text = ""
         logging.info("[VoicePipeline] Initialized VoicePipeline.")
@@ -105,7 +105,7 @@ class VoicePipeline:
                 priority = item["priority"]
                 volume = item["volume"]
                 gender = item["gender"]
-                engine = st.session_state.get("voice_engine", "pyttsx3 / gTTS")
+                engine = item["engine"]
                 self.latest_feedback = text
                 self.current_coach_text = text
                 logging.info(f"[VoicePipeline] worker dequeued: text='{text}', priority='{priority}', engine='{engine}'")
@@ -119,8 +119,7 @@ class VoicePipeline:
                         "priority": priority,
                         "timestamp": time.strftime("%H:%M:%S")
                     }
-                    self.pending_browser_speech = speech_item
-                    self.queue.task_done()
+                    self.pending_browser_speech.put(speech_item)
                     continue
 
                 self.bg_voice_coach.speak(text, volume=volume, gender=gender)
@@ -171,6 +170,7 @@ class VoicePipeline:
             "priority": priority,
             "volume": float(volume),
             "gender": gender,
+            "engine": st.session_state.get("voice_engine", "Web Speech API"),
             "timestamp": now,
         }
         self.queue.put(payload)
@@ -273,7 +273,7 @@ class VoicePipeline:
 
         elif event_type == "positive_feedback":
             text = payload.get("feedback", "Nice work. Keep it up.")
-            priority = "normal"
+            priority = "high"
 
         elif event_type == "workout_completed":
             text = "Congratulations! Workout completed."
@@ -433,6 +433,10 @@ class VoicePipeline:
             suggestion = payload.get("feedback", "")
             text = self._map_incorrect_form_feedback(suggestion)
             priority = "normal"
+
+        elif event_type == "positive_feedback":
+            text = payload.get("feedback", "Nice work. Keep it up.")
+            priority = "high"
             
         elif event_type == "workout_completed":
             text = "Congratulations! Workout completed."

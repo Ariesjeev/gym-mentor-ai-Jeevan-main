@@ -24,3 +24,18 @@ def test_voice_pipeline_speak_is_non_blocking():
 
     assert elapsed < 0.35, f"speak blocked for {elapsed:.2f}s"
     assert result is None
+
+
+def test_web_speech_is_forwarded_to_browser_queue():
+    st.session_state.clear()
+    st.session_state.voice_enabled = True
+    st.session_state.voice_volume = 1.0
+    st.session_state.voice_gender = "Female"
+    st.session_state.voice_engine = "Web Speech API"
+
+    pipeline = VoicePipeline(llm=None, tts=None)
+    pipeline.speak("Fix your knees.", priority="normal")
+
+    speech_item = pipeline.pending_browser_speech.get(timeout=1.0)
+    assert speech_item["text"] == "Fix your knees."
+    assert speech_item["priority"] == "normal"
