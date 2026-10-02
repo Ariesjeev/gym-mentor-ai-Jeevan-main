@@ -1,58 +1,19 @@
-# import cv2
-# import mediapipe as mp
-# import threading
-# import time
-# _mp_import_error = ""
-# try:
-#     import mediapipe.python.solutions as mp_solutions
-# except Exception as e1:
-#     _mp_import_error = f"mediapipe.python.solutions failed: {e1}"
-#     try:
-#         import mediapipe.solutions as mp_solutions
-#     except Exception as e2:
-#         _mp_import_error += f" | mediapipe.solutions failed: {e2}"
-#         mp_solutions = getattr(mp, "solutions", None)
-#         if mp_solutions is None:
-#             _mp_import_error += " | getattr(mp, 'solutions') is None"
-
-import sys, subprocess, threading, time, logging, traceback
-
-def _import_cv2():
-    """Import cv2; if the GUI build of OpenCV won the install race, swap in headless."""
-    try:
-        import cv2
-        return cv2, ""
-    except Exception:
-        first_error = traceback.format_exc()
-    try:
-        # opencv-python-headless has no libGL dependency, so it always imports on Streamlit Cloud
-        subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y",
-                               "opencv-python", "opencv-contrib-python",
-                               "opencv-contrib-python-headless", "opencv-python-headless"])
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-deps",
-                               "opencv-python-headless==4.10.0.84"])
-        import cv2
-        return cv2, ""
-    except Exception:
-        return None, first_error + "\n--- repair attempt failed ---\n" + traceback.format_exc()
-
-cv2, _cv2_import_error = _import_cv2()
-
+import cv2
+import mediapipe as mp
+import threading
+import time
 _mp_import_error = ""
-mp = None
-mp_solutions = None
-if cv2 is not None:
+try:
+    import mediapipe.python.solutions as mp_solutions
+except Exception as e1:
+    _mp_import_error = f"mediapipe.python.solutions failed: {e1}"
     try:
-        import mediapipe as mp
-        import mediapipe.python.solutions as mp_solutions
-    except Exception as e1:
-        _mp_import_error = f"mediapipe import failed: {e1}"
-        try:
-            mp_solutions = getattr(mp, "solutions", None)
-        except Exception:
-            mp_solutions = None
-else:
-    _mp_import_error = "cv2 failed to import, so mediapipe was skipped"
+        import mediapipe.solutions as mp_solutions
+    except Exception as e2:
+        _mp_import_error += f" | mediapipe.solutions failed: {e2}"
+        mp_solutions = getattr(mp, "solutions", None)
+        if mp_solutions is None:
+            _mp_import_error += " | getattr(mp, 'solutions') is None"
 
 import logging
 from typing import Optional
