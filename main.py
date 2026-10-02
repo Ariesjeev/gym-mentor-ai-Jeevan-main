@@ -55,9 +55,9 @@ def main():
     init_db()
 
     if _cv2_import_error:
-    st.error("cv2 failed to import")
-    st.code(_cv2_import_error)
-    st.stop()
+        st.error("cv2 failed to import")
+        st.code(_cv2_import_error)
+        st.stop()
 
     if not render_login_wall():
         return 
