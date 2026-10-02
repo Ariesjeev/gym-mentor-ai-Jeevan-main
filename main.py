@@ -45,9 +45,9 @@ def main():
         layout="wide"
     )
     if _cv2_import_error:
-    st.error("OpenCV (cv2) failed to import")
-    st.code(_cv2_import_error)
-    st.stop()   
+        st.error("OpenCV (cv2) failed to import")
+        st.code(_cv2_import_error)
+        st.stop()   
 
     load_css(os.path.join(os.getcwd(), "static", "style.css"))
     inject_local_font(os.path.join(os.getcwd(), "static", "AdobeClean.otf"), "AdobeClean")
