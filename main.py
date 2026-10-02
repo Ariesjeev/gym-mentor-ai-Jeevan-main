@@ -10,7 +10,10 @@ from services.config.goal_config import GOAL_NAMES, get_goal_config, get_recomme
 from services.ui.style_loader import load_css, inject_local_font, inject_webrtc_styles
 from services.persistence.exercise_repository import init_db, update_user_profile, save_schedule, get_schedule
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
-from services.vision.exercise_video_processor import VideoProcessorClass, mp_solutions, _mp_import_error
+# from services.vision.exercise_video_processor import VideoProcessorClass, mp_solutions, _mp_import_error
+from services.vision.exercise_video_processor import (
+    VideoProcessorClass, mp_solutions, _mp_import_error, _cv2_import_error
+)
 from services.tracking.metrics import sync_metrics_update
 from services.persistence.exercise_repository import get_users_exercises
 from services.scheduling.workout_scheduler import check_today_schedule, format_schedule_summary, calculate_bmi, bmi_category, DAY_NAMES
@@ -41,11 +44,20 @@ def main():
         initial_sidebar_state="expanded",
         layout="wide"
     )
+    if _cv2_import_error:
+    st.error("OpenCV (cv2) failed to import")
+    st.code(_cv2_import_error)
+    st.stop()   
 
     load_css(os.path.join(os.getcwd(), "static", "style.css"))
     inject_local_font(os.path.join(os.getcwd(), "static", "AdobeClean.otf"), "AdobeClean")
 
     init_db()
+
+    if _cv2_import_error:
+    st.error("cv2 failed to import")
+    st.code(_cv2_import_error)
+    st.stop()
 
     if not render_login_wall():
         return 
