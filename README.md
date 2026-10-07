@@ -41,6 +41,53 @@
 
 By integrating **Google MediaPipe's 3D Pose Estimation** with custom **vector trigonometry algorithms** and **Groq's ultra-fast Llama 3 LLM**, GymMentor AI performs real-time biomechanical analysis directly via your local webcam at 30+ frames per second. It tracks joint articulation, computes bilateral muscle symmetry, logs reps and sets, estimates MET-based calorie burn, and delivers instant, human-like verbal coaching cues to fix your form on the fly.
 
+## ✨ Core Capabilities & Feature Highlights
+
+### 🦾 1. Real-Time 3D Biomechanical Tracking
+- **33 Landmark Spatial Mesh**: Continuously tracks key spatial coordinates (shoulders, elbows, wrists, hips, knees, ankles) in 3D space in real time.
+- **Trigonometric Joint Angle Calculation**: Uses vector dot product mathematics to calculate precise internal joint angles with sub-degree accuracy.
+- **Dynamic Repetition State Machine**: Employs robust state-transition logic (`IDLE` ➔ `DOWN` ➔ `UP` ➔ `REP_COMPLETE`) to eliminate false positive rep counts from camera jitter.
+
+### 🗣️ 2. Live AI Voice Coach (Groq Llama 3 + Web Speech API)
+- **Zero-Latency Verbal Feedback**: Instantly analyzes workout flaws and triggers personalized audio coaching cues (*"Squat lower to break parallel!"*, *"Keep your back straight!"*, *"Excellent rep speed!"*).
+- **Post-Workout LLM Summary**: Generates comprehensive AI coaching summaries after each session, highlighting best form scores, weakest joint angles, and personalized recovery tips.
+- **Audio Hash Caching**: Smart audio caching prevents playback loops or browser stuttering during intensive video rendering.
+
+### ⚖️ 3. Bi-Lateral Symmetry & Injury Prevention
+- **Imbalance Warning System**: Continuously monitors left-to-right body symmetry during exercises like Shoulder Presses and Lunges.
+- **Real-Time Visual Alerts**: Displays immediate warning banners and form score deductions if one arm or leg lags behind, preventing muscular imbalances and joint strain.
+
+### 📊 4. Advanced Fitness Metrics & MET Calorie Engine
+- **Active MET Calorie Tracking**: Computes real-time energy expenditure using scientifically validated Metabolic Equivalent of Task (MET) formulas based on exercise intensity, body weight, and duration.
+- **Form Quality Scoring**: Assigns a real-time percentage grade (0–100%) to every single repetition based on depth, alignment, and tempo.
+- **Interactive Progress Dashboard**: Visualizes workout history, total volume lifted, streak calendars, and personal records.
+
+### 🎨 5. Glassmorphism UI & High-Performance WebRTC Streaming
+- **Sleek Dark Mode Aesthetics**: Engineered with curated HSL color palettes, custom typography (`AdobeClean`), and responsive CSS glassmorphic cards.
+- **Local WebRTC Video Pipeline**: High-speed local webcam capture and canvas rendering without sending any video data to external servers.
+
+---
+
+## 🖥️ Interactive Application Feature Gallery
+
+Explore the rich glassmorphic interface and professional features of **GymMentor AI**:
+
+<div align="center">
+
+| 🚀 1. Welcome & Instant Login | 📖 2. Exercise Form Guide & Tips |
+| :---: | :---: |
+| <img src="static/features/welcome_login.png" width="440" alt="Welcome Screen"/> | <img src="static/features/form_guide.png" width="440" alt="Exercise Form Guide"/> |
+| **Personalized AI Trainer Welcome & Quick Session Access** | **Visual Biomechanical Guide, Key Form Points & Breathing Technique** |
+
+| 📹 3. Live Webcam Video Analysis | 🏆 4. AI Post-Workout Summary |
+| :---: | :---: |
+| <img src="static/features/live_analysis.png" width="440" alt="Live Video Analysis"/> | <img src="static/features/workout_summary.png" width="440" alt="AI Post-Workout Summary"/> |
+| **Real-Time Joint Angle Tracking, Rep Counting & Live AI Form Score** | **Performance Rating, Strongest/Weakest Joint Metrics & Actionable Advice** |
+
+</div>
+
+---
+
 ## ✨ Features
 
 - 🦾 **Real-time pose tracking** — MediaPipe landmarks streamed live over the browser via `streamlit-webrtc`
