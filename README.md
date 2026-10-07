@@ -22,20 +22,21 @@
 ---
 
 ## 📑 Table of Contents
-- [Overview](#-overview)
-- [Features](#-features)
-- [Exercise Library](#-exercise-library)
-- [How It Works](#-how-it-works)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Setup Locally](#%EF%B8%8F-setup-locally)
-- [Problems I Faced](#-problems-i-faced)
-- [Known Limitations](#-known-limitations)
-- [Roadmap](#-roadmap)
+- [🌟 Executive Summary & Overview](#-executive-summary--overview)
+- [✨ Core Capabilities & Feature Highlights](#-core-capabilities--feature-highlights)
+- [🖥️ Interactive Application Feature Gallery](#-interactive-application-feature-gallery)
+- [🎯 Visual Exercise Showcase](#-visual-exercise-showcase)
+- [🧠 Biomechanical Evaluation Table](#-biomechanical-evaluation-table)
+- [🔄 AI & Computer Vision Processing Pipeline](#-ai--computer-vision-processing-pipeline)
+- [🏗️ System Architecture & Project Tree](#-system-architecture--project-tree)
+- [🛠️ Technology Stack](#-technology-stack)
+- [⚙️ Step-by-Step Installation & Setup](#-step-by-step-installation--setup)
+- [🛡️ Best Practices & Form Guidelines](#-best-practices--form-guidelines)
+- [🤝 Contributing & License](#-contributing--license)
 
 ---
 
-## 🌟 Overview
+## 🌟 Executive Summary & Overview
 
 **GymMentor AI** is an enterprise-grade, real-time AI workout assistant designed to democratize professional personal fitness training right on your computer. Traditional fitness apps rely on manual logging and passive video tutorials, leaving athletes vulnerable to incorrect posture, suboptimal muscle engagement, and acute gym injuries.
 
@@ -258,7 +259,7 @@ gym-mentor-ai/
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/Ariesjeev/gym-mentor-ai-Jeevan-main.git
-cd gym-mentor-ai
+cd gym-mentor-ai-jeevan-main
 ```
 
 ### 2. Set Up Python Virtual Environment
@@ -343,88 +344,6 @@ We welcome contributions from fitness enthusiasts, developers, and computer visi
 
 ---
 
-
-## 🔄 How It Works
-
-![Processing Pipeline](./gym-mentor-architecture.png)
-
-1. **Camera** — your browser streams webcam video locally via WebRTC; nothing is uploaded.
-2. **MediaPipe** — extracts body landmarks frame by frame.
-3. **Exercise Logic** (`core/`, `detectors/`) — computes joint angles and runs each exercise's rep/form state machine.
-4. **AI Coach** (`services/`) — sends form events to Groq's Llama 3 model for a short coaching message.
-5. **Voice** — the message is spoken aloud with gTTS, so you can keep training without watching the screen.
-6. **History** — each session is saved to SQLite against your username.
-
-## 🧰 Tech Stack
-
-| Category | Tools |
-|---|---|
-| App framework | `streamlit`, `streamlit-webrtc` |
-| Computer vision | `mediapipe`, `opencv-python-headless` |
-| AI coaching | `groq` (Llama 3) |
-| Voice | `gTTS`, `pyttsx3` |
-| Data | `numpy`, `pandas`, SQLite |
-| Config | `python-dotenv` |
-
-## 📁 Project Structure
-
-```
-gym-mentor-ai-Jeevan-main/
-├── main.py              # Streamlit entry point
-├── requirements.txt
-├── packages.txt          # system libs for OpenCV/MediaPipe (libgl1, libglib2.0-0)
-├── core/                 # Base exercise interface / shared pose math
-├── detectors/            # One detector per exercise (squat, pushup, curl, press, lunge)
-├── services/              # AI coaching (Groq), voice (gTTS/pyttsx3), auth, history
-└── static/               # CSS / UI assets
-```
-
-## ⚙️ Setup Locally
-
-```bash
-git clone https://github.com/Ariesjeev/gym-mentor-ai-Jeevan-main.git
-cd gym-mentor-ai-Jeevan-main
-
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-pip install -r requirements.txt
-```
-
-> On Linux/Streamlit Cloud, also install the system packages listed in `packages.txt` (`libgl1`, `libglib2.0-0`) so OpenCV and MediaPipe can load.
-
-Add your Groq key in `.streamlit/secrets.toml`:
-
-```toml
-GROQ_API_KEY = "gsk_your_actual_key_here"
-```
-
-Run it:
-
-```bash
-streamlit run main.py
-```
-
-Open `http://localhost:8501`, allow camera access, log in with a username, pick an exercise and start your set.
-
-## 😓 Problems I Faced
-
-<!-- Replace with your own real challenges — interviewers ask about these. -->
-- **Problem:** AI voice coaching wasn't playing at the start of a workout or mid-exercise. **Solution:** _[add what fixed it — e.g. caching audio, triggering playback on a user gesture, switching between gTTS and pyttsx3]_
-- **Problem:** `mediapipe`/`opencv` failing to load on deployment. **Solution:** Added `packages.txt` with `libgl1` and `libglib2.0-0` so the headless OpenCV build has its system dependencies on Streamlit Cloud.
-- **Problem:** _[add another real one, e.g. rep counting false positives from camera jitter]_. **Solution:** _[how you solved it]_
-
-## ⚠️ Known Limitations
-
-- Accuracy depends on camera angle, lighting and how much of your body is in frame
-- Voice coaching latency depends on the Groq API response time
-- No login security beyond a username (no password) — fine for a demo, not for production
-
-## 🚀 Roadmap
-
-- [ ] Add more exercises (deadlifts, planks)
-- [ ] Mobile-friendly camera layout
-- [ ] Per-exercise progress charts from workout history
 
 ## 👤 Author
 
