@@ -95,7 +95,7 @@ Explore the rich glassmorphic interface and professional features of **GymMentor
 - 🔢 **Automatic rep & set counting** — a state machine per exercise avoids false positives from camera jitter
 - 📐 **Joint-angle form scoring** — vector math on key joints (knee, elbow, hip, shoulder) checks depth and alignment
 - 🗣️ **AI voice coaching** — Groq (`llama-3.3-70b-versatile`) generates short corrective/encouraging cues, spoken with gTTS (pyttsx3 as fallback)
-- 🗂️ **Workout history** — sessions are logged to SQLite under a simple username login
+- 🗂️ **Workout history** — user profiles and training sessions are stored in Supabase PostgreSQL under a simple username login
 - 🎨 **Clean Streamlit UI** — live video panel with rep count, set progress and coach feedback
 
 ## 🎯 Exercise Library
@@ -158,7 +158,7 @@ The system operates on a high-throughput, asynchronous real-time processing loop
             |
             v
 +-----------------------+     +------------------------+
-| Real-Time Dashboard   | --> | SQLite Persistence     |
+| Real-Time Dashboard   | --> | Supabase Persistence   |
 | (MET Calories & Score)|     | (Workout History DB)   |
 +-----------------------+     +------------------------+
 ```
@@ -202,8 +202,9 @@ gym-mentor-ai/
 │   │   ├── goal_config.py       # Fitness goals (Hypertrophy, Strength, etc.)
 │   │   ├── workout_config.py    # Exercise catalog & default properties
 │   │   └── workout_program.py   # Preset multi-week training programs
-│   ├── persistence/             # Database repository & storage layer
-│   │   └── exercise_repository.py # SQLite database CRUD operations
+│   ├── persistence/             # Database repository & Supabase storage layer
+│   │   ├── exercise_repository.py # Supabase CRUD operations for workouts & profiles
+│   │   └── supabase_client.py    # Shared Supabase client configuration
 │   ├── scheduling/              # Smart workout planner & notifications
 │   │   └── workout_scheduler.py # Calendar scheduling & BMI calculator
 │   ├── state/                   # Streamlit session state management
@@ -244,7 +245,7 @@ gym-mentor-ai/
 | **Real-Time Streaming**| `streamlit-webrtc`, `aiortc`, `av`| Low-latency browser webcam video streaming over WebRTC protocols |
 | **Artificial Intelligence**| `Groq API`, `Llama 3 8B/70B` | Instant synthesized fitness coaching, personalized tips, and summaries |
 | **Data & Analytics** | `Pandas`, `NumPy` | Data wrangling, metric aggregations, and mathematical vector calculations |
-| **Database** | `SQLite3` | Lightweight, embedded persistent storage for user profiles and history |
+| **Database** | `Supabase (PostgreSQL)` | Cloud-hosted relational database for user profiles, workout history, and app data |
 | **Design & Styling** | `Vanilla CSS3`, `HTML5` | Glassmorphic UI cards, dynamic gradients, and custom font injection |
 
 ---
@@ -281,8 +282,8 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 4. Configure API Secrets
-Create a `.streamlit` directory and a `secrets.toml` file inside it to securely store your Groq API key:
+### 4. Configure API Secrets & Database
+Create a `.streamlit` directory and a `secrets.toml` file inside it to securely store your Groq API key. Also configure your Supabase credentials in a local `.env` file for the app's database layer:
 
 ```bash
 # Create directory and file (macOS/Linux)
@@ -294,10 +295,17 @@ New-Item -ItemType Directory -Force -Path .streamlit
 New-Item -ItemType File -Force -Path .streamlit\secrets.toml
 ```
 
-Open `.streamlit/secrets.toml` in your code editor and add your API key:
+Open `.streamlit/secrets.toml` in your code editor and add your Groq API key:
 ```toml
 # .streamlit/secrets.toml
 GROQ_API_KEY = "gsk_your_actual_groq_api_key_here"
+```
+
+Create a `.env` file in the project root for Supabase:
+```env
+# .env
+SUPABASE_URL="https://your-project-ref.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="your_service_role_key_here"
 ```
 
 ### 5. Launch GymMentor AI Locally
