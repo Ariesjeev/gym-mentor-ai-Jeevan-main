@@ -2,79 +2,251 @@ import datetime
 import calendar
 import pandas as pd
 
+# def calculate_streaks(workout_dates):
+#     """
+#     Calculate streak stats from workout dates.
+#     Returns: (current_streak, longest_streak, active_days, monthly_consistency)
+#     """
+#     if not workout_dates:
+#         return 0, 0, 0, 0.0
+        
+#     parsed_dates = set()
+#     for d in workout_dates:
+#         if isinstance(d, str):
+#             try:
+#                 parsed_dates.add(datetime.datetime.strptime(d.split()[0], "%Y-%m-%d").date())
+#             except Exception:
+#                 pass
+#         elif isinstance(d, datetime.date):
+#             parsed_dates.add(d)
+#         elif isinstance(d, datetime.datetime):
+#             parsed_dates.add(d.date())
+            
+#     sorted_dates = sorted(list(parsed_dates), reverse=True)
+#     active_days = len(sorted_dates)
+#     if not sorted_dates:
+#         return 0, 0, 0, 0.0
+        
+#     today = datetime.date.today()
+#     yesterday = today - datetime.timedelta(days=1)
+    
+#     # 1. Current Streak
+#     current_streak = 0
+#     check_date = today
+    
+#     # If no workout today, check if yesterday is the start of the streak
+#     if sorted_dates[0] == yesterday:
+#         check_date = yesterday
+#     elif sorted_dates[0] < yesterday:
+#         check_date = None
+#         current_streak = 0
+        
+#     if check_date is not None:
+#         for d in sorted_dates:
+#             if d == check_date:
+#                 current_streak += 1
+#                 check_date = check_date - datetime.timedelta(days=1)
+#             elif d < check_date:
+#                 break
+                
+#     # 2. Longest Streak
+#     longest_streak = 0
+#     temp_streak = 0
+#     all_sorted = sorted(list(parsed_dates))
+    
+#     if all_sorted:
+#         temp_streak = 1
+#         longest_streak = 1
+#         for i in range(1, len(all_sorted)):
+#             diff = (all_sorted[i] - all_sorted[i-1]).days
+#             if diff == 1:
+#                 temp_streak += 1
+#             elif diff > 1:
+#                 longest_streak = max(longest_streak, temp_streak)
+#                 temp_streak = 1
+#         longest_streak = max(longest_streak, temp_streak)
+        
+#     # 3. Monthly Consistency %
+#     current_year = today.year
+#     current_month = today.month
+#     active_in_current_month = sum(1 for d in sorted_dates if d.year == current_year and d.month == current_month)
+#     _, total_days_in_month = calendar.monthrange(current_year, current_month)
+#     monthly_consistency = (active_in_current_month / total_days_in_month) * 100.0 if total_days_in_month > 0 else 0.0
+    
+#     return current_streak, longest_streak, active_days, monthly_consistency
+
+
 def calculate_streaks(workout_dates):
     """
     Calculate streak stats from workout dates.
-    Returns: (current_streak, longest_streak, active_days, monthly_consistency)
+
+    Supports:
+    - Supabase ISO timestamps:
+      2026-10-08T13:25:56.606387+00:00
+    - SQLite timestamps:
+      2026-10-08 13:25:56
+    - YYYY-MM-DD strings
+    - datetime/date objects
+
+    Returns:
+        (current_streak, longest_streak, active_days, monthly_consistency)
     """
     if not workout_dates:
         return 0, 0, 0, 0.0
-        
+
     parsed_dates = set()
-    for d in workout_dates:
-        if isinstance(d, str):
-            try:
-                parsed_dates.add(datetime.datetime.strptime(d.split()[0], "%Y-%m-%d").date())
-            except Exception:
-                pass
-        elif isinstance(d, datetime.date):
-            parsed_dates.add(d)
-        elif isinstance(d, datetime.datetime):
-            parsed_dates.add(d.date())
-            
-    sorted_dates = sorted(list(parsed_dates), reverse=True)
+
+    for value in workout_dates:
+        try:
+            if value is None:
+                continue
+
+            # Already a datetime
+            if isinstance(value, datetime.datetime):
+                parsed_dates.add(value.date())
+                continue
+
+            # Already a date
+            if isinstance(value, datetime.date):
+                parsed_dates.add(value)
+                continue
+
+            # String timestamp/date
+            if isinstance(value, str):
+                value = value.strip()
+
+                if not value:
+                    continue
+
+                # Supabase ISO timestamp
+                # Example:
+                # 2026-10-08T13:25:56.606387+00:00
+                try:
+                    parsed = datetime.datetime.fromisoformat(
+                        value.replace("Z", "+00:00")
+                    )
+                    parsed_dates.add(parsed.date())
+                    continue
+                except ValueError:
+                    pass
+
+                # SQLite timestamp / normal datetime
+                try:
+                    parsed = datetime.datetime.strptime(
+                        value,
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    parsed_dates.add(parsed.date())
+                    continue
+                except ValueError:
+                    pass
+
+                # Date only
+                try:
+                    parsed = datetime.datetime.strptime(
+                        value[:10],
+                        "%Y-%m-%d"
+                    )
+                    parsed_dates.add(parsed.date())
+                    continue
+                except ValueError:
+                    pass
+
+        except Exception:
+            continue
+
+    sorted_dates = sorted(parsed_dates, reverse=True)
+
     active_days = len(sorted_dates)
+
     if not sorted_dates:
         return 0, 0, 0, 0.0
-        
+
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
-    
-    # 1. Current Streak
+
+    # ---------------------------------------------------------
+    # CURRENT STREAK
+    # ---------------------------------------------------------
     current_streak = 0
-    check_date = today
-    
-    # If no workout today, check if yesterday is the start of the streak
-    if sorted_dates[0] == yesterday:
+
+    if sorted_dates[0] == today:
+        check_date = today
+
+    elif sorted_dates[0] == yesterday:
         check_date = yesterday
-    elif sorted_dates[0] < yesterday:
+
+    else:
         check_date = None
-        current_streak = 0
-        
+
     if check_date is not None:
-        for d in sorted_dates:
-            if d == check_date:
+        for workout_date in sorted_dates:
+            if workout_date == check_date:
                 current_streak += 1
-                check_date = check_date - datetime.timedelta(days=1)
-            elif d < check_date:
+                check_date -= datetime.timedelta(days=1)
+
+            elif workout_date < check_date:
                 break
-                
-    # 2. Longest Streak
+
+    # ---------------------------------------------------------
+    # LONGEST STREAK
+    # ---------------------------------------------------------
     longest_streak = 0
-    temp_streak = 0
-    all_sorted = sorted(list(parsed_dates))
-    
+
+    all_sorted = sorted(parsed_dates)
+
     if all_sorted:
         temp_streak = 1
         longest_streak = 1
+
         for i in range(1, len(all_sorted)):
-            diff = (all_sorted[i] - all_sorted[i-1]).days
-            if diff == 1:
+            difference = (
+                all_sorted[i] - all_sorted[i - 1]
+            ).days
+
+            if difference == 1:
                 temp_streak += 1
-            elif diff > 1:
-                longest_streak = max(longest_streak, temp_streak)
+
+            else:
+                longest_streak = max(
+                    longest_streak,
+                    temp_streak
+                )
                 temp_streak = 1
-        longest_streak = max(longest_streak, temp_streak)
-        
-    # 3. Monthly Consistency %
+
+        longest_streak = max(
+            longest_streak,
+            temp_streak
+        )
+
+    # ---------------------------------------------------------
+    # MONTHLY CONSISTENCY
+    # ---------------------------------------------------------
     current_year = today.year
     current_month = today.month
-    active_in_current_month = sum(1 for d in sorted_dates if d.year == current_year and d.month == current_month)
-    _, total_days_in_month = calendar.monthrange(current_year, current_month)
-    monthly_consistency = (active_in_current_month / total_days_in_month) * 100.0 if total_days_in_month > 0 else 0.0
-    
-    return current_streak, longest_streak, active_days, monthly_consistency
 
+    active_in_current_month = sum(
+        1
+        for workout_date in sorted_dates
+        if workout_date.year == current_year
+        and workout_date.month == current_month
+    )
+
+    _, total_days_in_month = calendar.monthrange(
+        current_year,
+        current_month
+    )
+
+    monthly_consistency = (
+        active_in_current_month / total_days_in_month
+    ) * 100.0 if total_days_in_month > 0 else 0.0
+
+    return (
+        current_streak,
+        longest_streak,
+        active_days,
+        monthly_consistency
+    )
 
 def calculate_progress_stats(history_rows):
     """
@@ -117,15 +289,42 @@ def calculate_progress_stats(history_rows):
     current_streak, longest_streak, active_days, monthly_consistency = calculate_streaks(unique_dates)
     
     # Unique dates formatted for history
+    # parsed_dates = set()
+    # for d in unique_dates:
+    #     if isinstance(d, str):
+    #         try:
+    #             parsed_dates.add(datetime.datetime.strptime(d.split()[0], "%Y-%m-%d").date())
+    #         except Exception:
+    #             pass
+    # sorted_unique_dates = sorted(list(parsed_dates), reverse=True)
+    # unique_dates_str = [d.strftime("%Y-%m-%d") for d in sorted_unique_dates]
     parsed_dates = set()
     for d in unique_dates:
-        if isinstance(d, str):
-            try:
-                parsed_dates.add(datetime.datetime.strptime(d.split()[0], "%Y-%m-%d").date())
-            except Exception:
-                pass
-    sorted_unique_dates = sorted(list(parsed_dates), reverse=True)
-    unique_dates_str = [d.strftime("%Y-%m-%d") for d in sorted_unique_dates]
+        try:
+            if isinstance(d, str):
+                parsed = datetime.datetime.fromisoformat(
+                    d.replace("Z", "+00:00")
+                )
+                parsed_dates.add(parsed.date())
+
+            elif isinstance(d, datetime.datetime):
+                parsed_dates.add(d.date())
+
+            elif isinstance(d, datetime.date):
+                parsed_dates.add(d)
+
+        except (ValueError, TypeError):
+            pass
+
+    sorted_unique_dates = sorted(
+        list(parsed_dates),
+        reverse=True
+    )
+
+    unique_dates_str = [
+        d.strftime("%Y-%m-%d")
+        for d in sorted_unique_dates
+    ]
     
     # Exercise counts
     ex_counts = df["exercise_name"].value_counts()
@@ -154,44 +353,84 @@ def calculate_progress_stats(history_rows):
     }
 
 
+# def get_achievements(stats):
+#     """
+#     Get a list of streak-focused achievements with unlock status and progress string.
+#     """
+#     longest = stats["longest_streak"]
+#     return [
+#         {
+#             "name": "🥉 3-Day Streak",
+#             "desc": "Great start! Keep your streak alive.",
+#             "unlocked": longest >= 3,
+#             "progress": f"{min(3, longest)}/3 days"
+#         },
+#         {
+#             "name": "🥈 7-Day Streak",
+#             "desc": "One week strong! Excellent consistency.",
+#             "unlocked": longest >= 7,
+#             "progress": f"{min(7, longest)}/7 days"
+#         },
+#         {
+#             "name": "🥇 14-Day Streak",
+#             "desc": "Two weeks strong! Keep up the momentum.",
+#             "unlocked": longest >= 14,
+#             "progress": f"{min(14, longest)}/14 days"
+#         },
+#         {
+#             "name": "🔥 30-Day Streak",
+#             "desc": "Outstanding! You have built a powerful habit.",
+#             "unlocked": longest >= 30,
+#             "progress": f"{min(30, longest)}/30 days"
+#         },
+#         {
+#             "name": "👑 100-Day Streak",
+#             "desc": "Elite consistency! You are unstoppable.",
+#             "unlocked": longest >= 100,
+#             "progress": f"{min(100, longest)}/100 days"
+#         }
+#     ]
+
 def get_achievements(stats):
     """
-    Get a list of streak-focused achievements with unlock status and progress string.
+    Get a list of streak-focused achievements with unlock status and
+    progress based on the user's current active streak.
     """
+    current = stats["current_streak"]
     longest = stats["longest_streak"]
+
     return [
         {
             "name": "🥉 3-Day Streak",
             "desc": "Great start! Keep your streak alive.",
             "unlocked": longest >= 3,
-            "progress": f"{min(3, longest)}/3 days"
+            "progress": f"{min(3, current)}/3 days"
         },
         {
             "name": "🥈 7-Day Streak",
             "desc": "One week strong! Excellent consistency.",
             "unlocked": longest >= 7,
-            "progress": f"{min(7, longest)}/7 days"
+            "progress": f"{min(7, current)}/7 days"
         },
         {
             "name": "🥇 14-Day Streak",
             "desc": "Two weeks strong! Keep up the momentum.",
             "unlocked": longest >= 14,
-            "progress": f"{min(14, longest)}/14 days"
+            "progress": f"{min(14, current)}/14 days"
         },
         {
             "name": "🔥 30-Day Streak",
             "desc": "Outstanding! You have built a powerful habit.",
             "unlocked": longest >= 30,
-            "progress": f"{min(30, longest)}/30 days"
+            "progress": f"{min(30, current)}/30 days"
         },
         {
             "name": "👑 100-Day Streak",
             "desc": "Elite consistency! You are unstoppable.",
             "unlocked": longest >= 100,
-            "progress": f"{min(100, longest)}/100 days"
+            "progress": f"{min(100, current)}/100 days"
         }
     ]
-
 
 def get_ai_insights(history_rows, stats):
     """

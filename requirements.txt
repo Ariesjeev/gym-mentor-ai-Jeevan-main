@@ -9,3 +9,4 @@ groq>=1.0.0
 gTTS>=2.5.0
 pyttsx3>=2.99
 python-dotenv>=1.2.0
+supabase>=2.0.0
