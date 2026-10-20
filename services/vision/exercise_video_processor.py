@@ -149,6 +149,9 @@ class VideoProcessorClass(VideoProcessorBase):
             self.right_knee_angle = 0
 
     def increment_rep(self):
+        if self.target_sets > 0 and self.sets_completed >= self.target_sets:
+            return
+
         self.reps += 1
         self.current_set_reps += 1
 
@@ -202,7 +205,10 @@ class VideoProcessorClass(VideoProcessorBase):
         """Pull rep count and metrics from the detector result dict into self."""
         # Sync rep counts — increment_rep handles set logic, so just mirror reps
         new_reps = result.get("reps", 0)
-        if new_reps > self.reps:
+        if (
+            (self.target_sets <= 0 or self.sets_completed < self.target_sets)
+            and new_reps > self.reps
+        ):
             # Detector registered new reps since last frame
             diff = new_reps - self.reps
             for _ in range(diff):

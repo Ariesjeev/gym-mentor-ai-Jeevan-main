@@ -39,6 +39,25 @@ def render_rest_timer():
     if not st.session_state.get("rest_timer_active", False):
         return
 
+    target_sets = st.session_state.get("target_sets", 0)
+    sets_completed = st.session_state.get("sets_completed", 0)
+    program = st.session_state.get("active_program", [])
+    program_index = st.session_state.get("program_exercise_index", 0)
+    final_program_exercise = (
+        not st.session_state.get("program_mode", False)
+        or program_index >= len(program) - 1
+    )
+    if (
+        st.session_state.get("last_notified_workout_complete", False)
+        or (
+            target_sets > 0
+            and sets_completed >= target_sets
+            and final_program_exercise
+        )
+    ):
+        st.session_state.rest_timer_active = False
+        return
+
     remaining = st.session_state.rest_timer_end - time.time()
     if remaining <= 0:
         st.session_state.rest_timer_active = False
@@ -367,6 +386,7 @@ def main():
                     st.session_state.current_set_reps = 0
                     st.session_state.sets_completed = 0
                     st.session_state.workout_started = True
+                    st.session_state.rest_timer_active = False
                     st.session_state.workout_start_time = time.time()
                     st.session_state.calories_burned = 0.0
                     st.session_state.set_cycle_started_at = time.time()
@@ -414,6 +434,7 @@ def main():
                     st.session_state.current_set_reps = 0
                     st.session_state.sets_completed = 0
                     st.session_state.workout_started = True
+                    st.session_state.rest_timer_active = False
                     st.session_state.workout_start_time = time.time()
                     st.session_state.calories_burned = 0.0
                     st.session_state.set_cycle_started_at = time.time()
@@ -468,6 +489,7 @@ def main():
             if end_session_button:
                 st.session_state.workout_started = False
                 st.session_state.program_mode = False
+                st.session_state.rest_timer_active = False
                 from services.coaching.feedback_manager import finalize_workout_feedback
                 feedback = finalize_workout_feedback()
                 if st.session_state.voice_pipeline and feedback.get("voice_cue"):
@@ -1063,6 +1085,11 @@ def main():
                 with pcol2:
                     st.metric("Set Reps Completed", f"{current_set_reps} / {reps_per_set}")
                 st.metric("Sets Completed", f"{sets_completed} / {target_sets}")
+                if st.session_state.get("last_notified_workout_complete", False):
+                    st.success(
+                        "Today's workout session is complete. Extra reps will not be counted. "
+                        "Select **End Workout** when you're ready."
+                    )
 
                 # ── 🔥 Live Calorie Counter ────────────────────────────
                 kcal = st.session_state.get("calories_burned", 0.0)

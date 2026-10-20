@@ -45,6 +45,29 @@ def sync_metrics_update(context):
         st.session_state.last_score_update_time = time.time()
         st.session_state.last_score_voice_time = time.time()
         st.session_state.needs_reset = False
+
+    # A restarted WebRTC stream creates a fresh processor; restore workout
+    # counters from Streamlit state instead of restarting the active session.
+    elif (
+        processor.reps == 0
+        and processor.current_set_reps == 0
+        and processor.sets_completed == 0
+        and (
+            st.session_state.get("reps", 0) > 0
+            or st.session_state.get("current_set_reps", 0) > 0
+            or st.session_state.get("sets_completed", 0) > 0
+        )
+    ):
+        processor.exercise_type = st.session_state.get("exercise_type", "Squats")
+        if processor._current_exercise_type != processor.exercise_type:
+            processor._maybe_switch_detector()
+        processor.reps = st.session_state.get("reps", 0)
+        processor.current_set_reps = st.session_state.get("current_set_reps", 0)
+        processor.sets_completed = st.session_state.get("sets_completed", 0)
+        processor.last_announced_rep = processor.reps
+        processor.last_breathing_cue_set = processor.sets_completed
+        if processor._detector is not None:
+            processor._detector.reps = processor.reps
     
     # 1. Push configurations down to the video processor (main thread -> processing thread)
     processor.exercise_type = st.session_state.get("exercise_type", "Squats")
@@ -262,32 +285,25 @@ def sync_metrics_update(context):
     # 4. Voice coaching triggering on Set Completion
     last_notified_sets = st.session_state.get("last_notified_sets_completed", 0)
     if current_completed > last_notified_sets:
-        rest_secs = st.session_state.get("rest_duration", 60)
+        target_sets = st.session_state.get("target_sets", 0)
+        is_final_set = target_sets > 0 and current_completed >= target_sets
 
-        # ── Publish rest_timer_start event (voice + timer) ────────────────────
-        if st.session_state.get("voice_event_bus"):
-            st.session_state.voice_event_bus.publish(
-                "rest_timer_start",
-                {"rest_seconds": rest_secs, "set_num": current_completed}
-            )
+        if is_final_set:
+            st.session_state.rest_timer_active = False
+        else:
+            rest_secs = st.session_state.get("rest_duration", 60)
 
-        # ── Start rest countdown timer in session state ───────────────────────
-        st.session_state.rest_timer_active = True
-        st.session_state.rest_timer_end = time.time() + rest_secs
-        st.session_state.last_rest_countdown_spoken = -1
-
-        if st.session_state.get("voice_pipeline"):
-            try:
-                result = st.session_state.voice_pipeline.process_event(
-                    event="set_completed",
-                    exercise=st.session_state.exercise_type,
-                    metrics=current_metrics
+            # ── Publish rest_timer_start event (voice + timer) ────────────────
+            if st.session_state.get("voice_event_bus"):
+                st.session_state.voice_event_bus.publish(
+                    "rest_timer_start",
+                    {"rest_seconds": rest_secs, "set_num": current_completed}
                 )
-                if result:
-                    st.session_state.audio_to_play, st.session_state.coach_feedback, st.session_state.audio_duration = result
-                    st.session_state.audio_play_start = time.time()
-            except Exception as e:
-                logging.error(f"Error triggering set completion coaching: {e}")
+
+            # ── Start rest countdown timer in session state ───────────────────
+            st.session_state.rest_timer_active = True
+            st.session_state.rest_timer_end = time.time() + rest_secs
+            st.session_state.last_rest_countdown_spoken = -1
 
         st.session_state.last_notified_sets_completed = current_completed
 
@@ -325,28 +341,7 @@ def sync_metrics_update(context):
             if time.time() - st.session_state.get("injury_warning_shown_at", 0) > 8.0:
                 st.session_state.injury_warning_active = False
 
-    # 5. Voice coaching triggering on Workout Completion
-    target_sets = st.session_state.get("target_sets", 0)
-    is_workout_complete = current_completed >= target_sets and target_sets > 0
-    last_notified_complete = st.session_state.get("last_notified_workout_complete", False)
-    
-    if is_workout_complete and not last_notified_complete:
-        if st.session_state.get("voice_pipeline"):
-            try:
-                from services.coaching.feedback_manager import finalize_workout_feedback
-                feedback = finalize_workout_feedback()
-                voice_cue = feedback.get("voice_cue", "Excellent work today. Workout completed.")
-                
-                result = st.session_state.voice_pipeline.speak(voice_cue, priority="high")
-                if result:
-                    st.session_state.audio_to_play, st.session_state.coach_feedback, st.session_state.audio_duration = result
-                    st.session_state.audio_play_start = time.time()
-            except Exception as e:
-                logging.error(f"Error triggering workout completion coaching: {e}")
-                
-        st.session_state.last_notified_workout_complete = True
-
-    # 6. Consume events from the Voice Event Bus
+    # 5. Consume events from the Voice Event Bus
     bus = st.session_state.get("voice_event_bus")
     pipeline = st.session_state.get("voice_pipeline")
     if bus and pipeline:
@@ -365,7 +360,41 @@ def sync_metrics_update(context):
             except Exception as e:
                 logging.error(f"Error consuming event {event_type} from bus: {e}", exc_info=True)
 
-    # 7. ── Live Calorie Estimator ────────────────────────────────────────
+    # Speak completion after queued rep and breathing cues so they cannot cut it off.
+    target_sets = st.session_state.get("target_sets", 0)
+    is_workout_complete = current_completed >= target_sets and target_sets > 0
+    if st.session_state.get("program_mode", False):
+        program = st.session_state.get("active_program", [])
+        program_index = st.session_state.get("program_exercise_index", 0)
+        is_workout_complete = (
+            is_workout_complete
+            and program_index >= len(program) - 1
+        )
+    last_notified_complete = st.session_state.get("last_notified_workout_complete", False)
+
+    if is_workout_complete and not last_notified_complete:
+        st.session_state.rest_timer_active = False
+        if st.session_state.get("program_mode", False):
+            st.session_state.program_mode = False
+        if st.session_state.get("voice_pipeline"):
+            try:
+                from services.coaching.feedback_manager import finalize_workout_feedback
+                feedback = finalize_workout_feedback()
+                voice_cue = (
+                    "Today's workout session is complete. "
+                    + feedback.get("voice_cue", "Excellent work today.")
+                )
+
+                result = st.session_state.voice_pipeline.speak(voice_cue, priority="high")
+                if result:
+                    st.session_state.audio_to_play, st.session_state.coach_feedback, st.session_state.audio_duration = result
+                    st.session_state.audio_play_start = time.time()
+            except Exception as e:
+                logging.error(f"Error triggering workout completion coaching: {e}")
+
+        st.session_state.last_notified_workout_complete = True
+
+    # 6. ── Live Calorie Estimator ────────────────────────────────────────
     if st.session_state.get("workout_started", False):
         workout_start = st.session_state.get("workout_start_time", 0.0)
         if workout_start > 0:
