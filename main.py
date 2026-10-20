@@ -34,6 +34,71 @@ def clean_html(html_content: str) -> str:
     return "\n".join(line.strip() for line in html_content.splitlines())
 
 
+@st.fragment(run_every="1s")
+def render_rest_timer():
+    if not st.session_state.get("rest_timer_active", False):
+        return
+
+    remaining = st.session_state.rest_timer_end - time.time()
+    if remaining <= 0:
+        st.session_state.rest_timer_active = False
+        if st.session_state.get("voice_pipeline"):
+            st.session_state.voice_pipeline.speak(
+                "Rest complete! Start your next set.",
+                priority="high"
+            )
+        return
+
+    rem_int = int(remaining)
+    mins = rem_int // 60
+    secs = rem_int % 60
+    time_display = f"{mins}:{secs:02d}" if mins > 0 else f"{secs}s"
+    rest_total = st.session_state.get("rest_duration", 60)
+    progress_val = max(0.0, min(1.0, remaining / rest_total))
+
+    if rem_int <= 10:
+        timer_color = "#EF4444"
+        timer_bg = "rgba(239, 68, 68, 0.12)"
+        timer_border = "rgba(239, 68, 68, 0.4)"
+    elif rem_int <= 30:
+        timer_color = "#F59E0B"
+        timer_bg = "rgba(245, 158, 11, 0.10)"
+        timer_border = "rgba(245, 158, 11, 0.35)"
+    else:
+        timer_color = "#10B981"
+        timer_bg = "rgba(16, 185, 129, 0.10)"
+        timer_border = "rgba(16, 185, 129, 0.35)"
+
+    st.markdown(
+        clean_html(f"""
+        <div style="
+            background: {timer_bg};
+            border: 2px solid {timer_border};
+            border-radius: 14px;
+            padding: 14px 20px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font-size: 1.8rem;">⏱️</div>
+                <div>
+                    <div style="font-size: 0.75rem; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;">Rest Timer</div>
+                    <div style="font-size: 0.88rem; color: #CBD5E1; margin-top: 1px;">Next set starts soon. Catch your breath!</div>
+                </div>
+            </div>
+            <div style="font-size: 2.8rem; font-weight: 900; color: {timer_color}; letter-spacing: -0.02em; min-width: 80px; text-align: right;">
+                {time_display}
+            </div>
+        </div>
+        """).strip(),
+        unsafe_allow_html=True
+    )
+    st.progress(progress_val)
+
+
 def main():
     st.set_page_config(
         page_icon="🏋️‍♀️",
@@ -864,59 +929,7 @@ def main():
                     unsafe_allow_html=True
                 )
 
-            # ── ⏱️ Rest Timer Banner ──────────────────────────────────────────
-            if st.session_state.get("rest_timer_active", False):
-                remaining = st.session_state.rest_timer_end - time.time()
-                if remaining > 0:
-                    rem_int = int(remaining)
-                    mins = rem_int // 60
-                    secs = rem_int % 60
-                    time_display = f"{mins}:{secs:02d}" if mins > 0 else f"{secs}s"
-                    rest_total = st.session_state.get("rest_duration", 60)
-                    progress_val = max(0.0, min(1.0, remaining / rest_total))
-
-                    if rem_int <= 10:
-                        timer_color = "#EF4444"
-                        timer_bg = "rgba(239, 68, 68, 0.12)"
-                        timer_border = "rgba(239, 68, 68, 0.4)"
-                    elif rem_int <= 30:
-                        timer_color = "#F59E0B"
-                        timer_bg = "rgba(245, 158, 11, 0.10)"
-                        timer_border = "rgba(245, 158, 11, 0.35)"
-                    else:
-                        timer_color = "#10B981"
-                        timer_bg = "rgba(16, 185, 129, 0.10)"
-                        timer_border = "rgba(16, 185, 129, 0.35)"
-
-                    st.markdown(
-                        clean_html(f"""
-                        <div style="
-                            background: {timer_bg};
-                            border: 2px solid {timer_border};
-                            border-radius: 14px;
-                            padding: 14px 20px;
-                            margin-bottom: 14px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            gap: 16px;
-                        ">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="font-size: 1.8rem;">⏱️</div>
-                                <div>
-                                    <div style="font-size: 0.75rem; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;">Rest Timer</div>
-                                    <div style="font-size: 0.88rem; color: #CBD5E1; margin-top: 1px;">Next set starts soon. Catch your breath!</div>
-                                </div>
-                            </div>
-                            <div style="font-size: 2.8rem; font-weight: 900; color: {timer_color}; letter-spacing: -0.02em; min-width: 80px; text-align: right;">
-                                {time_display}
-                            </div>
-                        </div>
-                        """).strip(),
-                        unsafe_allow_html=True
-                    )
-                    st.progress(progress_val)
-
+            render_rest_timer()
 
             with col1:
                 st.markdown("#### 📷 Video Analysis")
