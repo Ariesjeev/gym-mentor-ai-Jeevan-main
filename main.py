@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import time
 import pandas as pd
+from pathlib import Path
 from services.auth.login_wall import render_login_wall
 from services.state.session_defaults import initial_session_defaults
 from services.config.workout_config import EXERCISE_OPTIONS
@@ -600,6 +601,16 @@ def main():
     if audio_to_play and st.session_state.get("voice_enabled", True) and st.session_state.get("voice_engine", "pyttsx3 / gTTS") == "pyttsx3 / gTTS":
         autoplay_audio(audio_to_play)
 
+    # if (audio_to_play
+    #     and st.session_state.get("voice_enabled", True)
+    #     and st.session_state.get("voice_engine", "pyttsx3 / gTTS")
+    #         == "pyttsx3 / gTTS"):
+    #     st.audio(
+    #             audio_to_play,
+    #             format="audio/mp3",
+    #             autoplay=False,
+    #         )
+
     # Render the Web Speech API player if active
     if st.session_state.get("voice_enabled", True) and st.session_state.get("voice_engine", "pyttsx3 / gTTS") == "Web Speech API":
         speech_queue = st.session_state.get("browser_speech_queue", [])
@@ -845,12 +856,17 @@ def main():
             )
 
             # ── 📹 Exercise Demo Section ─────────────────────────────────────────
+            demo_images_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "static",
+                "demos",
+            )
             DEMO_IMAGES = {
-                "Squats":                  "static/demos/squat.png",
-                "Push-ups":                "static/demos/pushup.png",
-                "Biceps Curls (Dumbbell)": "static/demos/bicep_curl.png",
-                "Shoulder Press":          "static/demos/shoulder_press.png",
-                "Lunges":                  "static/demos/lunge.png",
+                "Squats":                  os.path.join(demo_images_dir, "squat.png"),
+                "Push-ups":                os.path.join(demo_images_dir, "pushup.png"),
+                "Biceps Curls (Dumbbell)": os.path.join(demo_images_dir, "bicep_curl.png"),
+                "Shoulder Press":          os.path.join(demo_images_dir, "shoulder_press.png"),
+                "Lunges":                  os.path.join(demo_images_dir, "lunge.png"),
             }
             DEMO_TIPS = {
                 "Squats":                  ["Feet shoulder-width apart", "Knees track over toes", "Back stays straight", "Thighs parallel to floor"],
@@ -881,8 +897,10 @@ def main():
             demo_col1, demo_col2 = st.columns([1, 1], gap="large")
             with demo_col1:
                 img_path = DEMO_IMAGES.get(demo_exercise)
-                if img_path and os.path.exists(img_path):
+                if img_path and os.path.isfile(img_path):
                     st.image(img_path, caption=f"{demo_exercise} — Correct Form", use_container_width=True)
+                else:
+                    st.warning(f"Demo image not found for {demo_exercise}. Check that static/demos is included in the deployment.")
             with demo_col2:
                 st.markdown("**✅ Key Form Points**")
                 for tip in DEMO_TIPS.get(demo_exercise, []):
