@@ -39,6 +39,10 @@ def render_rest_timer():
     if not st.session_state.get("rest_timer_active", False):
         return
 
+    if not st.session_state.get("workout_started", False):
+        st.session_state.rest_timer_active = False
+        return
+
     target_sets = st.session_state.get("target_sets", 0)
     sets_completed = st.session_state.get("sets_completed", 0)
     program = st.session_state.get("active_program", [])
@@ -952,8 +956,6 @@ def main():
                     unsafe_allow_html=True
                 )
 
-            render_rest_timer()
-
             with col1:
                 st.markdown("#### 📷 Video Analysis")
 
@@ -1052,6 +1054,8 @@ def main():
                 except Exception as e:
                     st.error(f"🚨 **The camera failed to open (WebRTC Exception):**\n\n**Error Details:** `{e}`")
                     st.exception(e)
+
+                render_rest_timer()
 
                 if st.session_state.get("coach_feedback"):
                     st.markdown("")
