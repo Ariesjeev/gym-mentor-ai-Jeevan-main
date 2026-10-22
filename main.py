@@ -393,6 +393,7 @@ def main():
                     st.session_state.rest_timer_active = False
                     st.session_state.workout_start_time = time.time()
                     st.session_state.calories_burned = 0.0
+                    st.session_state.session_calories_by_exercise = {}
                     st.session_state.set_cycle_started_at = time.time()
                     st.session_state.last_saved_sets_completed = 0
                     st.session_state.form_score = 100
@@ -441,6 +442,7 @@ def main():
                     st.session_state.rest_timer_active = False
                     st.session_state.workout_start_time = time.time()
                     st.session_state.calories_burned = 0.0
+                    st.session_state.session_calories_by_exercise = {}
                     st.session_state.set_cycle_started_at = time.time()
                     st.session_state.last_saved_sets_completed = 0
                     st.session_state.form_score = 100
@@ -1092,11 +1094,13 @@ def main():
                 st.metric("Sets Completed", f"{sets_completed} / {target_sets}")
                 if st.session_state.get("last_notified_workout_complete", False):
                     st.success(
-                        "Today's workout session is complete. Extra reps will not be counted. "
+                        f"Today's workout session is complete. Estimated calories burned: "
+                        f"{st.session_state.get('calories_burned', 0.0):.1f} kcal. "
+                        "Extra reps will not be counted. "
                         "Select **End Workout** when you're ready."
                     )
 
-                # ── 🔥 Live Calorie Counter ────────────────────────────
+                # ── 🔥 Completed-Set Calorie Estimate ─────────────────
                 kcal = st.session_state.get("calories_burned", 0.0)
                 weight_kg = st.session_state.get("body_weight_kg", 70.0)
                 st.markdown(
@@ -1112,11 +1116,11 @@ def main():
                         align-items: center;
                     ">
                         <div>
-                            <div style="font-size: 0.7rem; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;">🔥 Calories Burned</div>
-                            <div style="font-size: 0.72rem; color: #64748B; margin-top: 1px;">{weight_kg} kg · {exercise}</div>
+                            <div style="font-size: 0.7rem; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;">🔥 Estimated Calories Burned</div>
+                            <div style="font-size: 0.72rem; color: #64748B; margin-top: 1px;">Completed sets · {weight_kg} kg</div>
                         </div>
                         <div style="font-size: 1.9rem; font-weight: 900; color: #F87171;">
-                            {kcal} <span style="font-size: 0.9rem; color: #94A3B8; font-weight: 500;">kcal</span>
+                            {kcal:.1f} <span style="font-size: 0.9rem; color: #94A3B8; font-weight: 500;">kcal</span>
                         </div>
                     </div>
                     """).strip(),
@@ -1341,6 +1345,7 @@ def main():
                     "Reps": row['reps'],
                     "Sets": row['sets'],
                     "Time (sec)": row['time'],
+                    "Calories (kcal)": row.get("calories_burned"),
                     "Avg Form Score": int(row['average_form_score']) if row.get('average_form_score') is not None else 0,
                     "Best Form Score": int(row['best_form_score']) if row.get('best_form_score') is not None else 0,
                     "Date": row['created_at']
@@ -1359,6 +1364,7 @@ def main():
                     "Reps": 'sum',
                     "Sets": "sum",
                     "Time (sec)": "sum",
+                    "Calories (kcal)": lambda values: values.sum(min_count=1),
                     "Avg Form Score": "mean",
                     "Best Form Score": "max"
                 }).reset_index()
@@ -1367,6 +1373,24 @@ def main():
                 agg_df["Best Form Score"] = agg_df["Best Form Score"].round().astype(int)
                 agg_df.index += 1
                 st.table(agg_df)
+
+                daily_calories = (
+                    table_df.groupby("Date")["Calories (kcal)"]
+                    .agg(lambda values: values.sum(min_count=1))
+                    .reset_index()
+                    .rename(columns={"Calories (kcal)": "Calories Burned (kcal)"})
+                    .sort_values("Date", ascending=False)
+                )
+                daily_calories["Calories Burned (kcal)"] = (
+                    daily_calories["Calories Burned (kcal)"]
+                    .map(
+                        lambda value: (
+                            f"{value:.1f}" if pd.notna(value) else "Not tracked"
+                        )
+                    )
+                )
+                st.markdown("##### Daily Calorie History")
+                st.table(daily_calories)
             
                 # Analytics Trend Line Chart
                 st.markdown("##### 📈 Form Score Trend Over Time")

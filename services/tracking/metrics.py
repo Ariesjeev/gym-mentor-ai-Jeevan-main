@@ -5,7 +5,7 @@ import datetime
 from services.persistence.exercise_repository import save_exercise, get_or_create_user, update_user_streaks, get_users_exercises
 from services.coaching.form_analyzer import calculate_form_score
 from services.tracking.progress_analytics import calculate_streaks
-from services.tracking.calorie_estimator import estimate_calories_from_time
+from services.tracking.calorie_estimator import estimate_calories, total_session_calories
 
 def sync_metrics_update(context):
     # If the WebRTC stream has not started or has stopped, do nothing
@@ -197,6 +197,13 @@ def sync_metrics_update(context):
     if current_completed > last_saved:
         time_taken = time.time() - st.session_state.get("set_cycle_started_at", time.time())
         try:
+            exercise_name = st.session_state.exercise_type
+            set_calories = estimate_calories(
+                exercise_name,
+                st.session_state.reps_per_set,
+                st.session_state.get("body_weight_kg", 70.0),
+            )
+
             # 1. Fetch previous user details to check last workout date
             prev_profile = get_or_create_user(st.session_state.username)
             last_date_str = prev_profile.get("last_workout_date") if prev_profile else None
@@ -240,7 +247,7 @@ def sync_metrics_update(context):
             st.session_state.recommendation = feedback["recommendation"]
             
             # 2. Save exercise set to DB
-            save_exercise(
+            saved = save_exercise(
                 user_id=st.session_state.user_id,
                 exercise_name=st.session_state.exercise_type,
                 reps=st.session_state.reps_per_set,
@@ -251,8 +258,28 @@ def sync_metrics_update(context):
                 feedback_summary=feedback["feedback_summary"],
                 strongest_area=feedback["strongest_area"],
                 weakest_area=feedback["weakest_area"],
-                improvement_percentage=feedback["improvement_percentage"]
+                improvement_percentage=feedback["improvement_percentage"],
+                calories_burned=set_calories,
             )
+            if saved:
+                calories_by_exercise = st.session_state.get(
+                    "session_calories_by_exercise", {}
+                )
+                calories_by_exercise[exercise_name] = round(
+                    calories_by_exercise.get(exercise_name, 0.0) + set_calories,
+                    1,
+                )
+                st.session_state.session_calories_by_exercise = (
+                    calories_by_exercise
+                )
+                st.session_state.calories_burned = total_session_calories(
+                    calories_by_exercise
+                )
+            else:
+                logging.error(
+                    "Completed set was not saved; its calories are excluded "
+                    "from the session total."
+                )
             
             # 3. Calculate new streaks
             history_rows_updated = get_users_exercises(st.session_state.user_id)
@@ -393,16 +420,6 @@ def sync_metrics_update(context):
                 logging.error(f"Error triggering workout completion coaching: {e}")
 
         st.session_state.last_notified_workout_complete = True
-
-    # 6. ── Live Calorie Estimator ────────────────────────────────────────
-    if st.session_state.get("workout_started", False):
-        workout_start = st.session_state.get("workout_start_time", 0.0)
-        if workout_start > 0:
-            elapsed = time.time() - workout_start
-            exercise = st.session_state.get("exercise_type", "Squats")
-            weight_kg = st.session_state.get("body_weight_kg", 70.0)
-            kcal = estimate_calories_from_time(exercise, elapsed, weight_kg)
-            st.session_state.calories_burned = kcal
 
     # 8. ── Program Auto-Transition ──────────────────────────────────────
     if st.session_state.get("program_mode", False):

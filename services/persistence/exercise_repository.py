@@ -343,6 +343,7 @@ def get_users_exercises(user_id):
                 "time,"
                 "average_form_score,"
                 "best_form_score,"
+                "calories_burned,"
                 "feedback_summary,"
                 "strongest_area,"
                 "weakest_area,"
@@ -380,7 +381,8 @@ def save_exercise(
     feedback_summary=None,
     strongest_area=None,
     weakest_area=None,
-    improvement_percentage=None
+    improvement_percentage=None,
+    calories_burned=0.0
 ):
     """
     Save one completed exercise/set.
@@ -397,6 +399,7 @@ def save_exercise(
             "reps": int(reps or 0),
             "sets": int(sets or 0),
             "time": float(time_spent or 0.0),
+            "calories_burned": float(calories_burned or 0.0),
             "average_form_score": (
                 float(average_form_score)
                 if average_form_score is not None
