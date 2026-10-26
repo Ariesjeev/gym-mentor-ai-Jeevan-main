@@ -1354,10 +1354,12 @@ def main():
             ]
 
             df = pd.DataFrame(arr)
+            today = pd.Timestamp.now().normalize()
+            recent_dates = pd.date_range(end=today, periods=7)
+            recent_history = []
 
             if not df.empty:
                 df["Date"] = pd.to_datetime(df["Date"])
-                # Table visualization
                 table_df = df.copy()
                 table_df["Date"] = table_df["Date"].dt.date
                 agg_df = table_df.groupby(["Exercise", "Date"]).agg({
@@ -1371,37 +1373,47 @@ def main():
                 # Clean up floats to integers for clean display
                 agg_df["Avg Form Score"] = agg_df["Avg Form Score"].round().astype(int)
                 agg_df["Best Form Score"] = agg_df["Best Form Score"].round().astype(int)
-                agg_df.index += 1
-                st.table(agg_df)
 
-                daily_calories = (
-                    table_df.groupby("Date")["Calories (kcal)"]
-                    .agg(lambda values: values.sum(min_count=1))
-                    .reset_index()
-                    .rename(columns={"Calories (kcal)": "Calories Burned (kcal)"})
-                    .sort_values("Date", ascending=False)
+            for day in reversed(recent_dates):
+                date_value = day.date()
+                date_label = date_value.isoformat()
+                day_workouts = (
+                    agg_df[agg_df["Date"] == date_value]
+                    if not df.empty
+                    else pd.DataFrame()
                 )
-                daily_calories["Calories Burned (kcal)"] = (
-                    daily_calories["Calories Burned (kcal)"]
-                    .map(
-                        lambda value: (
-                            f"{value:.1f}" if pd.notna(value) else "Not tracked"
-                        )
+
+                if day_workouts.empty:
+                    continue
+
+                for workout in day_workouts.to_dict("records"):
+                    workout["Date"] = date_label
+                    workout["Calories (kcal)"] = (
+                        round(workout["Calories (kcal)"], 1)
+                        if pd.notna(workout["Calories (kcal)"])
+                        else "Not tracked"
                     )
-                )
-                st.markdown("##### Daily Calorie History")
-                st.table(daily_calories)
-            
-                # Analytics Trend Line Chart
-                st.markdown("##### 📈 Form Score Trend Over Time")
-                # Sort workouts chronologically for trend analysis
-                trend_df = df.sort_values("Date")
-                trend_df["Session"] = trend_df["Date"].dt.strftime("%b %d, %H:%M") + " (" + trend_df["Exercise"] + ")"
-                # Plot
-                chart_data = trend_df[["Session", "Avg Form Score", "Best Form Score"]].set_index("Session")
-                st.line_chart(chart_data)
+                    recent_history.append(workout)
+
+            if recent_history:
+                st.table(pd.DataFrame(recent_history))
+            elif not df.empty:
+                st.info("No workouts recorded in the last 7 days.")
+            if df.empty:
+                st.info("No workout history found yet.")
             else:
-                st.info("No workout history found.")
+                st.markdown("##### 📈 Form Score Trend Over Time")
+                trend_df = df.sort_values("Date")
+                trend_df["Session"] = (
+                    trend_df["Date"].dt.strftime("%b %d, %H:%M")
+                    + " ("
+                    + trend_df["Exercise"]
+                    + ")"
+                )
+                chart_data = trend_df[
+                    ["Session", "Avg Form Score", "Best Form Score"]
+                ].set_index("Session")
+                st.line_chart(chart_data)
 
     with tab_dashboard:
         st.markdown("### 📊 Long-Term Progress Dashboard")
