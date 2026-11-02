@@ -87,6 +87,13 @@ Explore the rich glassmorphic interface and professional features of **GymMentor
 
 </div>
 
+## 🎬 Project Demo Video
+
+<div align="center">
+  <video src="static/videos/gym_mentor_demo.mp4" width="800" controls playsinline muted loop></video>
+  <p><strong>Live demo of GymMentor AI in action</strong></p>
+</div>
+
 ---
 
 ## ✨ Features
