@@ -86,13 +86,13 @@ Explore the rich glassmorphic interface and professional features of **GymMentor
 | **Real-Time Joint Angle Tracking, Rep Counting & Live AI Form Score** | **Performance Rating, Strongest/Weakest Joint Metrics & Actionable Advice** |
 
 </div>
-
+<!--
 ## 🎬 Project Demo Video
 
-<div align="center">
+<!-- <div align="center">
   <video src="static/videos/gym_mentor_demo.mp4" width="800" controls playsinline muted loop></video>
   <p><strong>Live demo of GymMentor AI in action</strong></p>
-</div>
+</div> -->
 
 ---
 
